@@ -257,12 +257,47 @@ window.CP = window.CP || {};
     }
   }
 
+  /* ---------- 定时发布调度器（每 30 秒检查一次到期任务） ---------- */
+  let schedTimer = null;
+  function initScheduler() {
+    if (schedTimer) return;
+    schedTimer = setInterval(runScheduler, 30000);
+  }
+
+  async function runScheduler() {
+    const due = S().scheduledPublishes.filter(t => t.status === 'pending' && new Date(t.scheduledAt).getTime() <= Date.now());
+    for (const t of due) {
+      CP.actions.updateScheduled(t.id, { status: 'publishing' });
+      let res;
+      try {
+        res = await CP.api.publish({ articleId: t.articleId, platformId: t.platformId, title: t.title, body: t.body });
+      } catch (e) {
+        res = { code: 1, msg: e.message || '发布失败' };
+      }
+      if (res.code === 0) {
+        const mode = res.data && res.data.mode;
+        if (mode === 'auto') {
+          CP.actions.updateScheduled(t.id, { status: 'done' });
+          ui().toast(`定时发布完成：「${t.title}」已发布到 ${res.data.platformName}`, 'ok');
+        } else {
+          CP.actions.updateScheduled(t.id, { status: 'done', note: '未绑定账号，已生成复制稿，请手动粘贴发布' });
+          ui().toast(`定时任务到点：「${t.title}」未绑定账号，已生成复制稿`, 'info');
+        }
+      } else {
+        CP.actions.updateScheduled(t.id, { status: 'failed', error: res.msg || '发布失败' });
+        ui().toast(`定时发布失败：「${t.title}」${res.msg || '未知错误'}`, 'warn');
+      }
+      try { window.dispatchEvent(new Event('cp:sched-updated')); } catch (_) { /* ignore */ }
+    }
+  }
+
   /* ---------- 初始化 ---------- */
   function init() {
     renderShell();
     render();
     window.addEventListener('hashchange', render);
     restartAutoPull();
+    initScheduler();
   }
 
   document.addEventListener('DOMContentLoaded', init);

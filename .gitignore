@@ -1,13 +1,17 @@
 # 依赖
 node_modules/
 
-# 构建与打包中间产物（保留最终安装包）
+# 构建与打包中间产物（安装包超 100MB 无法提交，通过 GitHub Releases 分发）
 release/*.log
 release/*.yml
 release/linux-unpacked/
 release/win-unpacked/
 release/mac/
 release/.icon-ico/
+release/*.zip
+release/*.AppImage
+release/*.exe
+release/*.dmg
 
 # 系统文件
 .DS_Store

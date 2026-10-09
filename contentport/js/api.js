@@ -385,10 +385,19 @@ ${article.body}
        POST /api/publish  —— 发布文章到平台
        实际模式：接平台开放 API 自动发布；未接入时生成复制稿
        -------------------------------------------------------- */
-    async publish({ articleId, platformId, title, body, accountNickname = '' }) {
+    async publish({ articleId, platformId, title, body, accountNickname = '', scheduledAt }) {
       await delay(1500);
       const article = CP.actions.getArticle(articleId);
       const platform = M().PLATFORMS.find(p => p.id === platformId);
+
+      // 定时发布：若指定了未来时间，先入队，到点由调度器执行
+      if (scheduledAt) {
+        const t = new Date(scheduledAt).getTime();
+        if (t > Date.now()) {
+          CP.actions.addScheduled({ articleId, platformId, title, body, scheduledAt });
+          return { code: 0, data: { mode: 'scheduled', platformName: platform.name }, msg: '已加入定时发布队列' };
+        }
+      }
       // 已登录账号 → 自动发布；否则复制稿模式
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];

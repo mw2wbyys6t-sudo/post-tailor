@@ -11,7 +11,8 @@ window.CP = window.CP || {};
     articles: 'cp.articles.v1',
     history: 'cp.history.v1',
     settings: 'cp.settings.v1',
-    sniffDone: 'cp.sniffDone.v1'
+    sniffDone: 'cp.sniffDone.v1',
+    scheduled: 'cp.scheduled.v1'
   };
 
   function load(key, fallback) {
@@ -38,6 +39,7 @@ window.CP = window.CP || {};
       autoPull: { enabled: true, interval: 30 }
     }),
     sniffDone: load(LS.sniffDone, false),         // 是否完成过嗅探
+    scheduledPublishes: load(LS.scheduled, []),   // 定时发布任务队列
     /* ---- 会话内 UI 状态 ---- */
     ui: {
       activeArticleId: null,                       // 分发工作台选中的文章
@@ -96,6 +98,25 @@ window.CP = window.CP || {};
     saveSettings(s) {
       state.settings = s;
       save(LS.settings, s);
+    },
+    /* ---- 定时发布队列 ---- */
+    getScheduled: () => state.scheduledPublishes,
+    addScheduled(task) {
+      task.id = 'sp' + Date.now() + Math.floor(Math.random() * 100);
+      task.status = 'pending';
+      task.createdAt = new Date().toLocaleString('zh-CN', { hour12: false });
+      state.scheduledPublishes.unshift(task);
+      save(LS.scheduled, state.scheduledPublishes);
+      return task;
+    },
+    updateScheduled(id, patch) {
+      const t = state.scheduledPublishes.find(x => x.id === id);
+      if (t) Object.assign(t, patch);
+      save(LS.scheduled, state.scheduledPublishes);
+    },
+    removeScheduled(id) {
+      state.scheduledPublishes = state.scheduledPublishes.filter(x => x.id !== id);
+      save(LS.scheduled, state.scheduledPublishes);
     },
     markSniffDone() {
       state.sniffDone = true;

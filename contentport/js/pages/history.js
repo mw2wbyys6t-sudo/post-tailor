@@ -22,6 +22,7 @@ window.CP = window.CP || {};
           <button class="btn btn-primary" data-act="go-distribute">${ui().icon('send', 15)} 去分发</button>
         </div>
       </div>
+      <div id="sched-panel" class="fade-up" style="margin-bottom:16px"></div>
       <div class="card fade-up">
         <div class="toolbar" style="margin:0;padding:16px 20px;border-bottom:1px solid var(--border)">
           <div class="toolbar-search">
@@ -43,8 +44,56 @@ window.CP = window.CP || {};
     root.querySelector('#h-q').addEventListener('input', () => renderTable(root));
     root.querySelector('#h-status').addEventListener('change', () => renderTable(root));
 
+    renderScheduled(root);
     renderTable(root);
   });
+
+  /* ---------- 定时发布队列面板 ---------- */
+  function renderScheduled(root) {
+    const panel = root.querySelector('#sched-panel');
+    if (!panel) return;
+    const tasks = S().scheduledPublishes.filter(t => t.status === 'pending' || t.status === 'publishing');
+    if (!tasks.length) { panel.innerHTML = ''; return; }
+    panel.innerHTML = `
+      <div class="card">
+        <div class="card-head" style="border-bottom:1px solid var(--border);padding:12px 20px">
+          <h3 style="font-size:14px">${ui().icon('clock', 14)} 定时发布队列</h3>
+          <span class="hint">到点自动发布到对应平台</span>
+        </div>
+        <div style="padding:4px 20px">
+          ${tasks.map(t => {
+            const p = M().PLATFORMS.find(x => x.id === t.platformId) || { name: '平台', color: '#888888' };
+            return `
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px dashed var(--border)">
+              <span class="dot" style="width:10px;height:10px;border-radius:50%;background:${p.color};flex:none"></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ui().esc(t.title)}</div>
+                <div style="font-size:11.5px;color:var(--ink-3)">${p.name} · ${String(t.scheduledAt).replace('T', ' ')} · ${countdown(t.scheduledAt)}</div>
+              </div>
+              <span class="badge ${t.status === 'publishing' ? 'badge-warn' : 'badge-gray'}">${t.status === 'publishing' ? '发布中…' : '等待中'}</span>
+              ${t.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-cancel="${t.id}">${ui().icon('x', 13)} 取消</button>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    panel.querySelectorAll('[data-cancel]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        CP.actions.removeScheduled(btn.dataset.cancel);
+        renderScheduled(root);
+        ui().toast('已取消定时任务', 'info');
+      });
+    });
+  }
+
+  function countdown(iso) {
+    const diff = new Date(iso).getTime() - Date.now();
+    if (diff <= 0) return '即将执行';
+    const m = Math.floor(diff / 60000);
+    if (m < 60) return `${Math.max(1, m)} 分钟后`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} 小时 ${m % 60} 分后`;
+    return `${Math.floor(h / 24)} 天后`;
+  }
 
   function renderTable(root) {
     const q = root.querySelector('#h-q').value.toLowerCase();
@@ -205,6 +254,14 @@ window.CP = window.CP || {};
     if (document.body.dataset.page === 'history') {
       const content = document.getElementById('content');
       if (content && content.querySelector('#h-body')) renderTable(content);
+    }
+  });
+
+  /* ---------- 定时任务状态变化后刷新队列面板 ---------- */
+  window.addEventListener('cp:sched-updated', () => {
+    if (document.body.dataset.page === 'history') {
+      const content = document.getElementById('content');
+      if (content && content.querySelector('#sched-panel')) renderScheduled(content);
     }
   });
 

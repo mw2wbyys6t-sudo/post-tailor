@@ -278,6 +278,18 @@ window.CP = window.CP || {};
           <div class="f-l">发布模式</div>
           <div class="f-v" style="font-weight:600">${autoMode ? (isXhs ? '浏览器辅助发布（打开官方发布页确认）' : '自动发布（以你的账号直接发布）') : (pendingMode ? '凭据不完整，请到账号中心重新登录' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
         </div>
+        <div class="fact" style="margin-bottom:10px">
+          <div class="f-l">发布时间</div>
+          <div class="f-v" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-weight:600">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="radio" name="pub-when" id="pub-now" checked style="accent-color:var(--primary)" /> 立即发布
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="radio" name="pub-when" id="pub-later" style="accent-color:var(--primary)" /> 定时发布
+            </label>
+            <input type="datetime-local" id="pub-sched" style="display:none;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink)" />
+          </div>
+        </div>
         <div class="hint">${autoMode
           ? (isXhs
             ? `系统将打开小红书官方发布页，自动填入标题、正文复制到剪贴板，请在页面中粘贴正文并确认发布。`
@@ -294,21 +306,44 @@ window.CP = window.CP || {};
             ? `<button class="btn btn-primary" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`
             : `<button class="btn btn-primary" id="pub-go-acc">${ui().icon('user', 15)} 去登录账号</button>
                <button class="btn btn-ghost" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`)}
-      </div>`, { width: 520 });
+      </div>`, { width: 560 });
 
     const modal = document.querySelector('.modal');
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
 
+    // 立即 / 定时 切换
+    const laterRadio = modal.querySelector('#pub-later');
+    const schedInput = modal.querySelector('#pub-sched');
+    laterRadio.addEventListener('change', () => {
+      schedInput.style.display = laterRadio.checked ? 'inline-block' : 'none';
+      if (laterRadio.checked && !schedInput.value) {
+        // 默认 1 小时后
+        const d = new Date(Date.now() + 3600 * 1000);
+        schedInput.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      }
+    });
+    modal.querySelector('#pub-now').addEventListener('change', () => {
+      schedInput.style.display = 'none';
+    });
+
     const confirmBtn = modal.querySelector('#pub-confirm');
     if (confirmBtn) {
       confirmBtn.addEventListener('click', async () => {
-        await doPublishNow(modal, articleId, pid, r, p, acc);
+        if (laterRadio.checked && schedInput.value) {
+          await doSchedule(modal, articleId, pid, r, p, acc, schedInput.value);
+        } else {
+          await doPublishNow(modal, articleId, pid, r, p, acc);
+        }
       });
     }
     const copyBtn = modal.querySelector('#pub-confirm-copy');
     if (copyBtn) {
       copyBtn.addEventListener('click', async () => {
-        await doPublishNow(modal, articleId, pid, r, p, null);
+        if (laterRadio.checked && schedInput.value) {
+          await doSchedule(modal, articleId, pid, r, p, null, schedInput.value);
+        } else {
+          await doPublishNow(modal, articleId, pid, r, p, null);
+        }
       });
     }
     const goAcc = modal.querySelector('#pub-go-acc');
@@ -317,6 +352,27 @@ window.CP = window.CP || {};
         location.hash = '#/accounts';
         modal.closest('.modal-wrap').querySelector('[data-close]').click();
       });
+    }
+  }
+
+  /* ---------- 定时发布：加入队列 ---------- */
+  async function doSchedule(modal, articleId, pid, r, p, acc, schedVal) {
+    const btn = modal.querySelector('#pub-confirm, #pub-confirm-copy');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = ui().icon('refresh', 15) + ' 加入队列…';
+    const res = await CP.api.publish({
+      articleId, platformId: pid, title: r.title, body: r.body,
+      accountNickname: acc ? acc.nickname : '',
+      scheduledAt: schedVal
+    });
+    btn.innerHTML = ui().icon('check', 15) + ' 完成';
+    modal.closest('.modal-wrap').querySelector('[data-close]').click();
+    if (res.code === 0 && res.data && res.data.mode === 'scheduled') {
+      const when = new Date(schedVal).toLocaleString('zh-CN', { hour12: false });
+      ui().toast(`已加入定时发布队列：${p.name} · ${when}`, 'ok');
+    } else {
+      ui().toast(res.msg || '操作失败', 'warn');
     }
   }
 
