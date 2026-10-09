@@ -313,4 +313,24 @@ async function publish({ appid, secret, title, author, digest, content, coverUrl
   };
 }
 
-module.exports = { verifyLogin, publish, mdToHtml, makeCoverPng };
+/* ---------- 数据回拉：查询发布状态（freepublish/get） ----------
+   微信单篇阅读/点赞数据需要「图文分析」datacube 接口权限，
+   普通开发账号没有该权限，这里仅回拉发布/审核状态。 ---------- */
+async function fetchStats({ appid, secret, publishId }) {
+  if (!publishId) throw new Error('缺少 publish_id');
+  const token = await getAccessToken(appid, secret);
+  const json = await wxFetch(`/cgi-bin/freepublish/get?access_token=${token}`, { article_id: publishId });
+  wxErr(json);
+  const detail = json.article_detail || {};
+  const statusMap = { 0: '发布成功', 1: '审核中', 2: '审核失败', 3: '发布失败' };
+  const status = statusMap[detail.status] || (detail.status !== undefined ? `状态码 ${detail.status}` : '未知');
+  return {
+    views: 0,
+    likes: 0,
+    comments: 0,
+    status,
+    note: '微信图文阅读数据需「图文分析」接口权限，当前仅回拉发布状态'
+  };
+}
+
+module.exports = { verifyLogin, publish, mdToHtml, makeCoverPng, fetchStats };

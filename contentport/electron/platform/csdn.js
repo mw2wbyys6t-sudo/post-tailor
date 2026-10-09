@@ -200,4 +200,35 @@ async function publish({ username, password, title, content, categories = ['原�
   return { postid: String(postid), url: articleUrl };
 }
 
-module.exports = { verifyLogin, publish, mdToHtml };
+/* ---------- 数据回拉：读取文章页 HTML 中的阅读/点赞/评论数 ---------- */
+async function fetchStats({ username, postId }) {
+  if (!postId) throw new Error('缺少文章 ID');
+  const resp = await fetch(
+    `https://blog.csdn.net/${encodeURIComponent(username || '')}/article/details/${postId}`,
+    {
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36' }
+    }
+  );
+  if (!resp.ok) throw new Error(`CSDN 文章页访问失败 HTTP ${resp.status}`);
+  const html = await resp.text();
+
+  const grab = (patterns) => {
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m && m[1]) {
+        const n = parseInt(String(m[1]).replace(/,/g, ''), 10);
+        if (!isNaN(n)) return n;
+      }
+    }
+    return 0;
+  };
+
+  return {
+    views: grab([/"viewCount":\s*"?(\d+)/, /"readCount":\s*"?(\d+)/, /阅读[：:]\s*(\d+)/]),
+    likes: grab([/"likeCount":\s*"?(\d+)/, /"diggCount":\s*"?(\d+)/, /"upCount":\s*"?(\d+)/]),
+    comments: grab([/"commentCount":\s*"?(\d+)/, /评论[：:]\s*(\d+)/]),
+    note: ''
+  };
+}
+
+module.exports = { verifyLogin, publish, mdToHtml, fetchStats };

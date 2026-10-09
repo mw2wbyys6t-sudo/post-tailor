@@ -112,4 +112,35 @@ async function publish({ cookie, title, content }) {
   return { postid: String(id), url: `https://zhuanlan.zhihu.com/p/${id}` };
 }
 
-module.exports = { verifyLogin, publish, mdToHtml, cookieValue };
+/* ---------- 数据回拉：文章互动数据 ---------- */
+async function fetchStats({ cookie, postId }) {
+  if (!postId) throw new Error('缺少文章 ID');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const resp = await fetch(
+      `https://api.zhihu.com/articles/${postId}?include=voteup_count,comment_count,view_count`,
+      {
+        headers: {
+          cookie,
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+        },
+        signal: controller.signal
+      }
+    );
+    if (!resp.ok) throw new Error(`知乎数据接口访问失败 HTTP ${resp.status}`);
+    const data = await resp.json().catch(() => null);
+    if (!data || !data.id) throw new Error('知乎返回数据异常');
+    return {
+      views: data.view_count || 0,
+      likes: data.voteup_count || 0,
+      comments: data.comment_count || 0,
+      status: '',
+      note: ''
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+module.exports = { verifyLogin, publish, mdToHtml, cookieValue, fetchStats };

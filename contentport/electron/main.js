@@ -241,6 +241,23 @@ ipcMain.handle('platform:publish', async (_event, payload) => {
   }
 });
 
+/* ---------- 数据回拉：渲染进程 → 主进程 → 平台统计接口 ---------- */
+ipcMain.handle('platform:stats', async (_event, payload) => {
+  const { platformId, credential, postId } = payload;
+  switch (platformId) {
+    case 'csdn':
+      return await csdn.fetchStats({ username: credential.username, postId });
+    case 'wechat':
+      return await wechat.fetchStats({ appid: credential.appid, secret: credential.secret, publishId: postId });
+    case 'zhihu':
+      return await zhihu.fetchStats({ cookie: credential.cookie, postId });
+    case 'xhs':
+      throw new Error('小红书为浏览器辅助发布，暂不支持数据回拉');
+    default:
+      throw new Error(`平台 ${platformId} 未接入数据回拉`);
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => {

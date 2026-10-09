@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loginOAuth: (payload) => ipcRenderer.invoke('platform:login-oauth', payload),
   // 平台自动发布（真实 API）
   publishTo: (payload) => ipcRenderer.invoke('platform:publish', payload),
+  // 平台数据回拉（阅读/点赞/评论）
+  fetchStats: (payload) => ipcRenderer.invoke('platform:stats', payload),
   // 环境信息
   isElectron: true,
   platform: process.platform

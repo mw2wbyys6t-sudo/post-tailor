@@ -75,6 +75,11 @@ window.CP = window.CP || {};
       state.history.unshift(rec);
       save(LS.history, state.history);
     },
+    updateHistory(id, patch) {
+      const h = state.history.find(x => x.id === id);
+      if (h) Object.assign(h, patch);
+      save(LS.history, state.history);
+    },
     getSettings: () => state.settings,
     saveSettings(s) {
       state.settings = s;

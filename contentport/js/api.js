@@ -427,6 +427,7 @@ ${article.body}
           }
           rec.status = '已发布';
           rec.link = result.url || result.link || '';
+          if (result.postid) rec.postId = result.postid;
           if (result.publish_id) rec.publishId = result.publish_id;
           CP.actions.addHistory(rec);
           return { code: 0, data: { rec, mode: 'auto', platformName: result.platformName || platform.name, note: result.note || '' } };
@@ -443,6 +444,28 @@ ${article.body}
       if (!autoPublish) rec.link = '';
       CP.actions.addHistory(rec);
       return { code: 0, data: { rec, mode: autoPublish ? 'auto' : 'copy', pendingReal, platformName: platform.name } };
+    },
+
+    /* --------------------------------------------------------
+       GET /api/stats  —— 回拉平台文章数据（阅读/点赞/评论）
+       body: { platformId, postId }
+       仅 Electron + 已登录账号可用
+       -------------------------------------------------------- */
+    async fetchStats({ platformId, postId }) {
+      if (!postId) return { code: 1, msg: '该记录没有可回拉的文章标识（小红书为浏览器辅助发布，暂不支持）' };
+      const accounts = S().settings.accounts || {};
+      const acc = accounts[platformId];
+      if (!acc || !acc.linked || !acc.credential) return { code: 1, msg: '请先到账号中心登录该平台账号' };
+      const electron = window.electronAPI;
+      if (!electron || typeof electron.fetchStats !== 'function') {
+        return { code: 1, msg: '数据回拉仅支持 Electron 桌面版' };
+      }
+      try {
+        const stats = await electron.fetchStats({ platformId, credential: acc.credential, postId });
+        return { code: 0, data: stats };
+      } catch (e) {
+        return { code: 1, msg: e.message || '数据回拉失败' };
+      }
     }
   };
 
