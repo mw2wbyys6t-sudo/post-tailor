@@ -132,6 +132,10 @@ window.CP = window.CP || {};
               ${ui().icon('user', 16)} ${portrait ? '更新用户画像' : '创建用户画像'}
               <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">5 步问答</span>
             </button>
+            <button class="btn btn-ghost btn-lg" data-act="go-accounts" style="justify-content:flex-start">
+              ${ui().icon('key', 16)} 平台账号登录
+              <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">CSDN / 微信 / 小红书 / 知乎</span>
+            </button>
             <button class="btn btn-ghost btn-lg" data-act="go-history" style="justify-content:flex-start">
               ${ui().icon('clock', 16)} 查看发布记录
               <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">${history.length} 条</span>
@@ -170,6 +174,7 @@ window.CP = window.CP || {};
     bindAll(root, '[data-act="go-profile"]', () => location.hash = '#/profile');
     bindAll(root, '[data-act="go-library"]', () => location.hash = '#/library');
     bindAll(root, '[data-act="go-history"]', () => location.hash = '#/history');
+    bindAll(root, '[data-act="go-accounts"]', () => location.hash = '#/accounts');
     root.querySelectorAll('[data-step]').forEach(el => {
       el.addEventListener('click', () => {
         const k = el.dataset.step;

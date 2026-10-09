@@ -312,18 +312,45 @@ ${article.body}
     },
 
     /* --------------------------------------------------------
+       POST /api/accounts/login  —— 登录平台账号
+       body: { platformId, method: 'api'|'cookie', nickname, token?, cookie? }
+       返回 { nickname, avatar }；真实实现调用平台开放接口校验凭据
+       -------------------------------------------------------- */
+    async loginAccount(platformId, { method, nickname, token, cookie } = {}) {
+      await delay(900);
+      const plat = M().PLATFORMS.find(p => p.id === platformId);
+      if (!plat) return { code: 1, msg: '未知平台' };
+      // TODO: 真实实现 ——
+      //   api 方式：调用平台开放接口 /oauth/token + /user/info 校验 token，换取昵称头像
+      //   cookie 方式：Electron 内打开平台登录页，捕获 session cookie 后调用接口确认登录态
+      if (method === 'cookie' && !cookie) return { code: 1, msg: 'Cookie 为空' };
+      if (method === 'api' && !token) return { code: 1, msg: 'Token 为空' };
+      return {
+        code: 0,
+        data: {
+          nickname: nickname || plat.name + '用户',
+          method
+        }
+      };
+    },
+
+    /* --------------------------------------------------------
        POST /api/publish  —— 发布文章到平台
        实际模式：接平台开放 API 自动发布；未接入时生成复制稿
        -------------------------------------------------------- */
-    async publish({ articleId, platformId, title, body }) {
+    async publish({ articleId, platformId, title, body, accountNickname = '' }) {
       await delay(1500);
       const article = CP.actions.getArticle(articleId);
       const platform = M().PLATFORMS.find(p => p.id === platformId);
-      const autoPublish = !!S().settings.platforms && !!S().settings.platforms[platformId];
+      // 已登录账号 → 自动发布；否则复制稿模式
+      const accounts = S().settings.accounts || {};
+      const acc = accounts[platformId];
+      const autoPublish = !!(acc && acc.linked && acc.credential);
       const rec = {
         id: 'h' + Date.now(),
         articleId,
         platformId,
+        accountNickname: autoPublish ? (accountNickname || acc.nickname) : '',
         status: autoPublish ? '已发布' : '复制稿已生成',
         time: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
         link: autoPublish ? `https://${platformId}.example/${articleId}` : '',

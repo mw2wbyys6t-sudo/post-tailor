@@ -232,11 +232,17 @@ window.CP = window.CP || {};
   }
 
   /* ---------- 发布 ---------- */
+  function accountOf(pid) {
+    const accounts = S().settings.accounts || {};
+    return accounts[pid] && accounts[pid].linked ? accounts[pid] : null;
+  }
+
   async function doPublish(root, pid) {
     const articleId = S().ui.activeArticleId;
     const r = S().ui.rewriteResults[pid];
     if (!r) return;
     const p = M().PLATFORMS.find(x => x.id === pid);
+    const acc = accountOf(pid);
 
     ui().openModal(`
       <div class="modal-head">
@@ -245,27 +251,69 @@ window.CP = window.CP || {};
       </div>
       <div class="modal-body">
         <div class="fact" style="margin-bottom:10px">
-          <div class="f-l">发布模式</div>
-          <div class="f-v" style="font-weight:600">${S().settings.platforms && S().settings.platforms[pid] ? '自动发布（已接入平台 API）' : '复制稿模式（生成排版后手动粘贴到平台编辑器）'}</div>
+          <div class="f-l">发布账号</div>
+          <div class="f-v" style="font-weight:600;display:flex;align-items:center;gap:8px">
+            ${acc
+              ? `<span style="display:inline-flex;align-items:center;gap:7px">${ui().icon('checkCircle', 14)} ${ui().esc(acc.nickname)}（${p.name}）</span>`
+              : `<span style="color:var(--amber)">${ui().icon('alert', 14)} 尚未登录 ${p.name} 账号</span>`}
+          </div>
         </div>
-        <div class="hint">${S().settings.platforms && S().settings.platforms[pid] ? '系统将调用平台开放接口直接发布。' : '推荐模式：软件生成目标平台的成品文案与排版建议，复制后粘贴发布，最稳定。'}</div>
+        <div class="fact" style="margin-bottom:10px">
+          <div class="f-l">发布模式</div>
+          <div class="f-v" style="font-weight:600">${acc ? '自动发布（以你的账号直接发布）' : '复制稿模式（生成排版后手动粘贴到平台编辑器）'}</div>
+        </div>
+        <div class="hint">${acc
+          ? `系统将以 ${ui().esc(acc.nickname)} 的身份调用 ${p.name} 发布接口。`
+          : '未绑定账号时推荐使用复制稿模式，最稳定；也可以先到「账号中心」登录该平台账号后自动发布。'}</div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
-        <button class="btn btn-primary" id="pub-confirm">${ui().icon('send', 15)} 确认发布</button>
+        ${acc
+          ? `<button class="btn btn-primary" id="pub-confirm">${ui().icon('send', 15)} 确认发布</button>`
+          : `<button class="btn btn-primary" id="pub-go-acc">${ui().icon('user', 15)} 去登录账号</button>
+             <button class="btn btn-ghost" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`}
       </div>`, { width: 520 });
 
     const modal = document.querySelector('.modal');
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
-    modal.querySelector('#pub-confirm').addEventListener('click', async () => {
-      const btn = modal.querySelector('#pub-confirm');
-      btn.disabled = true;
-      btn.innerHTML = ui().icon('refresh', 15) + ' 发布中…';
-      const res = await CP.api.publish({ articleId, platformId: pid, title: r.title, body: r.body });
-      btn.innerHTML = ui().icon('check', 15) + ' 完成';
-      modal.closest('.modal-wrap').querySelector('[data-close]').click();
-      ui().toast(`已${res.data.mode === 'auto' ? '发布' : '生成'}到 ${res.data.platformName}`, 'ok');
+
+    const confirmBtn = modal.querySelector('#pub-confirm');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', async () => {
+        await doPublishNow(modal, articleId, pid, r, p, acc);
+      });
+    }
+    const copyBtn = modal.querySelector('#pub-confirm-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        await doPublishNow(modal, articleId, pid, r, p, null);
+      });
+    }
+    const goAcc = modal.querySelector('#pub-go-acc');
+    if (goAcc) {
+      goAcc.addEventListener('click', () => {
+        location.hash = '#/accounts';
+        modal.closest('.modal-wrap').querySelector('[data-close]').click();
+      });
+    }
+  }
+
+  async function doPublishNow(modal, articleId, pid, r, p, acc) {
+    const btn = modal.querySelector('#pub-confirm, #pub-confirm-copy');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = ui().icon('refresh', 15) + ' 发布中…';
+    const res = await CP.api.publish({
+      articleId, platformId: pid, title: r.title, body: r.body,
+      accountNickname: acc ? acc.nickname : ''
     });
+    btn.innerHTML = ui().icon('check', 15) + ' 完成';
+    modal.closest('.modal-wrap').querySelector('[data-close]').click();
+    if (res.data.mode === 'auto') {
+      ui().toast(`已通过 ${ui().esc(acc.nickname)} 发布到 ${res.data.platformName}`, 'ok');
+    } else {
+      ui().toast(`已生成 ${res.data.platformName} 复制稿，请粘贴发布`, 'ok');
+    }
   }
 
   /* ---------- 复制改写稿 ---------- */

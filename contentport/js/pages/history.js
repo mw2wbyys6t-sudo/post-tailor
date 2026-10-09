@@ -69,7 +69,7 @@ window.CP = window.CP || {};
       <table class="table">
         <thead>
           <tr>
-            <th>文章</th><th>平台</th><th>状态</th><th>适配度</th>
+            <th>文章</th><th>平台</th><th>发布账号</th><th>状态</th><th>适配度</th>
             <th>阅读</th><th>点赞</th><th>发布时间</th><th></th>
           </tr>
         </thead>
@@ -82,6 +82,7 @@ window.CP = window.CP || {};
             <tr>
               <td class="t-title" title="${ui().esc(a ? a.title : '')}">${ui().esc(a ? a.title : '(已删除)')}</td>
               <td><span style="display:inline-flex;align-items:center;gap:7px;font-weight:600"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:${p.color}"></span>${p.name}</span></td>
+              <td>${h.accountNickname ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${ui().icon('user', 12)} ${ui().esc(h.accountNickname)}</span>` : '<span style="font-size:11.5px;color:var(--ink-4)">复制稿</span>'}</td>
               <td><span class="badge ${stCls}">${h.status}</span></td>
               <td class="t-score" style="color:${h.score >= 90 ? 'var(--ok)' : h.score >= 80 ? 'var(--amber)' : 'var(--ink-3)'}">${h.score || '—'}</td>
               <td>${ui().fmtNum(h.views)}</td>

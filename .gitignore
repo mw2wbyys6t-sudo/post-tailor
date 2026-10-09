@@ -13,3 +13,7 @@ release/.icon-ico/
 .DS_Store
 Thumbs.db
 *.log
+
+# 工具缓存
+.trae-html-share-packages/
+.screenshots/

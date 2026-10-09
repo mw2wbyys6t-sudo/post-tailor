@@ -16,6 +16,7 @@ window.CP = window.CP || {};
     { key: 'library', label: '文章库', icon: 'book', crumb: '内容资产管理' },
     { key: 'audience', label: '受众嗅探', icon: 'radar', crumb: '平台受众分析' },
     { key: 'distribute', label: '分发工作台', icon: 'send', crumb: '自适应改写与发布' },
+    { key: 'accounts', label: '账号中心', icon: 'key', crumb: '平台账号登录与绑定' },
     { key: 'history', label: '发布记录', icon: 'clock', crumb: '发布历史与数据' }
   ];
 
