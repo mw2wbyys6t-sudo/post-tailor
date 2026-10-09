@@ -7,6 +7,7 @@ window.CP = window.CP || {};
 (function () {
   const ui = () => CP.ui;
   const S = () => CP.state;
+  const M = () => CP.mock;
 
   /* ---------- 冻结导航 ---------- */
   const NAV = [
@@ -117,38 +118,91 @@ window.CP = window.CP || {};
   /* ---------- 设置弹窗（保存用户提供的 API Key） ---------- */
   function openSettings() {
     const s = S().settings;
+    const platforms = s.platforms || {};
     ui().openModal(`
       <div class="modal-head">
         <h3>设置</h3>
-        <p>接入你的 AI / 平台 API 后，自动发布与深度改写将生效。配置保存在本机浏览器。</p>
+        <p>接入 AI / 平台 API 后，深度改写与自动发布将生效。配置保存在本机浏览器。</p>
       </div>
       <div class="modal-body">
-        <label class="label">AI 服务地址（Base URL）</label>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('bot', 14)} AI 服务（OpenAI 兼容）</div>
+        <label class="label" style="margin-top:8px">Base URL</label>
         <input class="input" id="set-base" placeholder="https://api.deepseek.com" value="${ui().esc(s.ai.baseUrl)}" />
-        <label class="label" style="margin-top:14px">AI API Key</label>
+        <label class="label" style="margin-top:12px">API Key</label>
         <input class="input" id="set-key" type="password" placeholder="sk-..." value="${ui().esc(s.ai.apiKey)}" />
-        <label class="label" style="margin-top:14px">模型名称</label>
+        <label class="label" style="margin-top:12px">模型名称</label>
         <input class="input" id="set-model" placeholder="deepseek-chat" value="${ui().esc(s.ai.model)}" />
-        <div class="hint">Key 只保存在本机，不会上传。未配置时使用内置「规则引擎」改写。</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <button class="btn btn-soft btn-sm" id="set-test">${ui().icon('zap', 13)} 测试连接</button>
+          <span class="hint" id="set-test-msg" style="margin-top:0"></span>
+        </div>
+        <div class="divider"></div>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('globe', 14)} 平台开放 API（可选，用于自动发布）</div>
+        <div class="hint" style="margin-top:6px">填写后，发布时将走对应平台开放接口自动发布；留空则使用「复制稿」模式。</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          ${M().PLATFORMS.map(p => `
+            <div>
+              <label class="label" style="color:${p.color}">${p.name} API Key</label>
+              <input class="input" data-pk="${p.id}" type="password" placeholder="可选" value="${ui().esc(platforms[p.id] || '')}" />
+            </div>`).join('')}
+        </div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
         <button class="btn btn-primary" id="set-save">${ui().icon('check', 15)} 保存配置</button>
-      </div>`, { width: 500 });
+      </div>`, { width: 620 });
 
     const modal = document.querySelector('.modal');
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+
+    modal.querySelector('#set-test').addEventListener('click', async () => {
+      const btn = modal.querySelector('#set-test');
+      const msg = modal.querySelector('#set-test-msg');
+      btn.disabled = true;
+      msg.textContent = '测试中…';
+      // 先临时保存用于测试
+      CP.actions.saveSettings({
+        ai: {
+          baseUrl: document.getElementById('set-base').value.trim(),
+          apiKey: document.getElementById('set-key').value.trim(),
+          model: document.getElementById('set-model').value.trim()
+        },
+        platforms: collectPlatformKeys()
+      });
+      try {
+        const res = await CP.api.aiPing();
+        if (res.code === 0) {
+          msg.innerHTML = `<span style="color:var(--ok)">${ui().icon('checkCircle', 12)} ${res.msg}（${res.costMs}ms）</span>`;
+        } else {
+          msg.innerHTML = `<span style="color:var(--amber)">${ui().icon('flame', 12)} ${ui().esc(res.msg)}</span>`;
+        }
+      } catch (e) {
+        msg.innerHTML = `<span style="color:var(--danger)">${ui().icon('x', 12)} ${ui().esc(e.message || '连接失败')}</span>`;
+      }
+      btn.disabled = false;
+    });
+
     modal.querySelector('#set-save').addEventListener('click', () => {
       CP.actions.saveSettings({
         ai: {
           baseUrl: document.getElementById('set-base').value.trim(),
           apiKey: document.getElementById('set-key').value.trim(),
           model: document.getElementById('set-model').value.trim()
-        }
+        },
+        platforms: collectPlatformKeys()
       });
       ui().toast('配置已保存（存于本机）', 'ok');
       modal.closest('.modal-wrap').querySelector('[data-close]').click();
     });
+
+    function collectPlatformKeys() {
+      const out = {};
+      modal.querySelectorAll('[data-pk]').forEach(inp => {
+        const v = inp.value.trim();
+        if (v) out[inp.dataset.pk] = v;
+      });
+      return out;
+    }
   }
 
   /* ---------- 初始化 ---------- */

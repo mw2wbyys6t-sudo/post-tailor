@@ -154,6 +154,7 @@ window.CP = window.CP || {};
           <div style="font-size:12px;color:var(--ink-3);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap">
             <span>${ui().icon('target', 12)} 适配「${r.fitted}」</span>
             <span>${ui().icon('hash', 12)} ${r.keywords.map(k => '#' + k).join(' ')}</span>
+            ${r.aiGenerated ? `<span class="badge" style="background:var(--primary-soft);color:var(--primary)">${ui().icon('bot', 11)} AI 生成</span>` : `<span class="badge badge-gray">${ui().icon('gauge', 11)} 规则引擎</span>`}
           </div>
         </div>
       </div>
@@ -199,24 +200,35 @@ window.CP = window.CP || {};
     const articleId = S().ui.activeArticleId;
     if (!articleId) { ui().toast('请先选择文章', 'warn'); return; }
 
+    const aiReady = !!(S().settings.ai.apiKey && S().settings.ai.baseUrl);
     loading = true;
     CP.actions.clearRewrite();
     const btn = root.querySelector('#d-run');
     btn.disabled = true;
-    btn.innerHTML = ui().icon('refresh', 15) + ' 改写中…';
+    btn.innerHTML = ui().icon('refresh', 15) + (aiReady ? ' AI 改写中…' : ' 改写中…');
     renderRight(root, 'loading');
 
     const res = await CP.api.rewriteArticle(articleId, sel);
     loading = false;
     btn.disabled = false;
-    btn.innerHTML = ui().icon('sparkles', 15) + ' 智能改写';
+    btn.innerHTML = ui().icon('sparkles', 15) + (aiReady ? ' 智能改写（AI）' : ' 智能改写');
 
     if (res.code !== 0) { ui().toast(res.msg || '改写失败', 'warn'); renderRight(root, 'idle'); return; }
     const results = res.data;
     Object.keys(results).forEach(pid => CP.actions.setRewriteResult(pid, results[pid]));
     activePid = sel[0];
     renderRight(root, 'idle');
-    ui().toast(`已为 ${sel.length} 个平台生成改写稿`, 'ok');
+
+    if (aiReady) {
+      const failCount = Object.keys(res.errors || {}).length;
+      if (failCount > 0) {
+        ui().toast(`AI 改写完成，${failCount} 个平台回退规则引擎（${ui().esc(Object.values(res.errors)[0])}）`, 'warn');
+      } else {
+        ui().toast(`AI 已为 ${sel.length} 个平台生成原生改写稿`, 'ok');
+      }
+    } else {
+      ui().toast(`已为 ${sel.length} 个平台生成改写稿（规则引擎）`, 'ok');
+    }
   }
 
   /* ---------- 发布 ---------- */
@@ -272,12 +284,26 @@ window.CP = window.CP || {};
 
   /* ---------- AI 深度改写 ---------- */
   async function aiDeep(root, pid) {
-    const res = await CP.api.aiDeepRewrite(S().ui.activeArticleId, pid);
-    if (res.code === 2) {
-      ui().toast('未配置 AI API，已使用内置规则引擎；可在左下角设置中填入 Key', 'warn');
-      return;
+    const btn = root.querySelector(`[data-act="ai-deep"][data-pid="${pid}"]`);
+    if (!btn) return;
+    const old = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = ui().icon('refresh', 15) + ' 深度改写中…';
+    try {
+      const res = await CP.api.aiDeepRewrite(S().ui.activeArticleId, pid);
+      if (res.code === 2) {
+        ui().toast('未配置 AI API，可在设置中填写 Key 后使用深度改写', 'warn');
+      } else if (res.code === 0) {
+        renderRight(root, 'idle');
+        ui().toast('AI 深度改写完成，已更新该平台版本', 'ok');
+      } else {
+        ui().toast(res.msg || '深度改写失败', 'warn');
+      }
+    } catch (e) {
+      ui().toast(e.message || '深度改写失败', 'warn');
     }
-    ui().toast('AI 深度改写完成', 'ok');
+    btn.disabled = false;
+    btn.innerHTML = old;
   }
 
   /* ---------- 切换文章 ---------- */
