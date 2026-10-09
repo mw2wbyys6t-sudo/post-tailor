@@ -243,6 +243,10 @@ window.CP = window.CP || {};
     if (!r) return;
     const p = M().PLATFORMS.find(x => x.id === pid);
     const acc = accountOf(pid);
+    // 已接入真实发布 API 且已绑定账号 → 自动发布；否则复制稿
+    const realSupport = (window.CP.REAL_PLATFORM_IDS || []).includes(pid);
+    const autoMode = !!(acc && realSupport);
+    const pendingMode = !!(acc && !realSupport);
 
     ui().openModal(`
       <div class="modal-head">
@@ -260,18 +264,22 @@ window.CP = window.CP || {};
         </div>
         <div class="fact" style="margin-bottom:10px">
           <div class="f-l">发布模式</div>
-          <div class="f-v" style="font-weight:600">${acc ? '自动发布（以你的账号直接发布）' : '复制稿模式（生成排版后手动粘贴到平台编辑器）'}</div>
+          <div class="f-v" style="font-weight:600">${autoMode ? '自动发布（以你的账号直接发布）' : (pendingMode ? '复制稿模式（该平台自动发布接入中）' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
         </div>
-        <div class="hint">${acc
+        <div class="hint">${autoMode
           ? `系统将以 ${ui().esc(acc.nickname)} 的身份调用 ${p.name} 发布接口。`
-          : '未绑定账号时推荐使用复制稿模式，最稳定；也可以先到「账号中心」登录该平台账号后自动发布。'}</div>
+          : (pendingMode
+            ? `${p.name} 自动发布接口接入中，已绑定账号暂未启用，先生成复制稿手动发布。`
+            : '未绑定账号时推荐使用复制稿模式，最稳定；也可以先到「账号中心」登录该平台账号后自动发布。')}</div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
-        ${acc
+        ${autoMode
           ? `<button class="btn btn-primary" id="pub-confirm">${ui().icon('send', 15)} 确认发布</button>`
-          : `<button class="btn btn-primary" id="pub-go-acc">${ui().icon('user', 15)} 去登录账号</button>
-             <button class="btn btn-ghost" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`}
+          : (pendingMode
+            ? `<button class="btn btn-primary" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`
+            : `<button class="btn btn-primary" id="pub-go-acc">${ui().icon('user', 15)} 去登录账号</button>
+               <button class="btn btn-ghost" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`)}
       </div>`, { width: 520 });
 
     const modal = document.querySelector('.modal');
@@ -310,7 +318,9 @@ window.CP = window.CP || {};
     btn.innerHTML = ui().icon('check', 15) + ' 完成';
     modal.closest('.modal-wrap').querySelector('[data-close]').click();
     if (res.data.mode === 'auto') {
-      ui().toast(`已通过 ${ui().esc(acc.nickname)} 发布到 ${res.data.platformName}`, 'ok');
+      ui().toast(`已通过 ${ui().esc(acc ? acc.nickname : '你的账号')} 发布到 ${res.data.platformName}`, 'ok');
+    } else if (res.data.pendingReal) {
+      ui().toast(`${res.data.platformName} 自动发布接入中，已生成复制稿，请手动粘贴发布`, 'info');
     } else {
       ui().toast(`已生成 ${res.data.platformName} 复制稿，请粘贴发布`, 'ok');
     }

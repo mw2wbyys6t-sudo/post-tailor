@@ -12,6 +12,9 @@ window.CP = window.CP || {};
   const M = () => CP.mock;
   const S = () => CP.state;
 
+  /* 已接入真实发布 API 的平台（其余平台已绑定账号时仍走复制稿） */
+  const REAL_PLATFORM_IDS = ['csdn', 'wechat'];
+
   /* ========================================================
      AI 调用基础（OpenAI 兼容 /chat/completions）
      ======================================================== */
@@ -312,26 +315,35 @@ ${article.body}
     },
 
     /* --------------------------------------------------------
-       POST /api/accounts/login  —— 登录平台账号
-       body: { platformId, method: 'api'|'cookie', nickname, token?, cookie? }
-       返回 { nickname, avatar }；真实实现调用平台开放接口校验凭据
+       POST /api/accounts/login  —— 登录平台账号（真实校验）
+       body: { platformId, method, nickname, credential, cookie }
+       credential 按平台结构：
+         csdn   → { username, password }
+         wechat → { appid, secret }
+         xhs / zhihu → { token }（暂为演示）
+       Electron：走主进程平台通道（CSDN MetaWeblog / 微信 API）
+       浏览器：返回模拟结果（演示）
        -------------------------------------------------------- */
-    async loginAccount(platformId, { method, nickname, token, cookie } = {}) {
-      await delay(900);
+    async loginAccount(platformId, { method, nickname, credential, cookie } = {}) {
+      await delay(400);
       const plat = M().PLATFORMS.find(p => p.id === platformId);
       if (!plat) return { code: 1, msg: '未知平台' };
-      // TODO: 真实实现 ——
-      //   api 方式：调用平台开放接口 /oauth/token + /user/info 校验 token，换取昵称头像
-      //   cookie 方式：Electron 内打开平台登录页，捕获 session cookie 后调用接口确认登录态
-      if (method === 'cookie' && !cookie) return { code: 1, msg: 'Cookie 为空' };
-      if (method === 'api' && !token) return { code: 1, msg: 'Token 为空' };
-      return {
-        code: 0,
-        data: {
-          nickname: nickname || plat.name + '用户',
-          method
+
+      // 真实登录通道（Electron）
+      const electron = window.electronAPI;
+      if (electron && typeof electron.loginTo === 'function') {
+        try {
+          const info = await electron.loginTo({ platformId, credential: credential || {} });
+          return { code: 0, data: { nickname: info.nickname, method: info.method } };
+        } catch (e) {
+          return { code: 1, msg: e.message || '登录校验失败' };
         }
-      };
+      }
+
+      // 浏览器回退：模拟校验（演示）
+      if (method === 'cookie' && !cookie) return { code: 1, msg: 'Cookie 为空' };
+      if (method === 'api' && !credential) return { code: 1, msg: '凭据为空' };
+      return { code: 0, data: { nickname: nickname || plat.name + '用户', method } };
     },
 
     /* --------------------------------------------------------
@@ -345,23 +357,56 @@ ${article.body}
       // 已登录账号 → 自动发布；否则复制稿模式
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];
-      const autoPublish = !!(acc && acc.linked && acc.credential);
+      // 仅「已接入真实 API 的平台 + 已绑定账号」才走自动发布
+      const realReady = REAL_PLATFORM_IDS.includes(platformId);
+      const autoPublish = !!(acc && acc.linked && acc.credential && realReady);
+      const pendingReal = !!(acc && acc.linked && acc.credential && !realReady);
       const rec = {
         id: 'h' + Date.now(),
         articleId,
         platformId,
         accountNickname: autoPublish ? (accountNickname || acc.nickname) : '',
-        status: autoPublish ? '已发布' : '复制稿已生成',
+        status: '已发布',
         time: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
-        link: autoPublish ? `https://${platformId}.example/${articleId}` : '',
+        link: '',
         views: 0,
         likes: 0,
         score: 80 + Math.round(Math.random() * 15)
       };
+
+      // 真实发布通道（Electron + 已登录账号）
+      const electron = window.electronAPI;
+      if (autoPublish && electron && typeof electron.publishTo === 'function') {
+        try {
+          const result = await electron.publishTo({
+            platformId,
+            credential: acc.credential,
+            title,
+            content: body,
+            digest: (article && article.summary) || ''
+          });
+          rec.status = '已发布';
+          rec.link = result.url || result.link || '';
+          if (result.publish_id) rec.publishId = result.publish_id;
+          CP.actions.addHistory(rec);
+          return { code: 0, data: { rec, mode: 'auto', platformName: result.platformName || platform.name, note: result.note || '' } };
+        } catch (e) {
+          rec.status = '失败';
+          rec.failReason = e.message || '发布失败';
+          CP.actions.addHistory(rec);
+          return { code: 1, msg: e.message || '发布失败', data: { rec, mode: 'auto', platformName: platform.name } };
+        }
+      }
+
+      // 复制稿模式
+      rec.status = autoPublish ? '已发布' : '复制稿已生成';
+      if (!autoPublish) rec.link = '';
       CP.actions.addHistory(rec);
-      return { code: 0, data: { rec, mode: autoPublish ? 'auto' : 'copy', platformName: platform.name } };
+      return { code: 0, data: { rec, mode: autoPublish ? 'auto' : 'copy', pendingReal, platformName: platform.name } };
     }
   };
 
   CP.api = api;
+  /* 已接入真实发布 API 的平台（供前端展示） */
+  CP.REAL_PLATFORM_IDS = REAL_PLATFORM_IDS;
 })();

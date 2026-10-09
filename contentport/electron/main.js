@@ -65,11 +65,51 @@ ipcMain.handle('ai:call', async (_event, { url, body, apiKey }) => {
   }
 });
 
-/* ---------- 发布代理：渲染进程 → 主进程 → 平台 API（预留） ---------- */
+/* ---------- 平台发布通道（真实 API） ---------- */
+const csdn = require('./platform/csdn');
+const wechat = require('./platform/wechat');
+
+/* ---------- 登录校验：渲染进程 → 主进程 → 平台接口 ---------- */
+ipcMain.handle('platform:login', async (_event, payload) => {
+  const { platformId, credential } = payload;
+  switch (platformId) {
+    case 'csdn':
+      // credential = { username, password }
+      return await csdn.verifyLogin(credential.username, credential.password);
+    case 'wechat':
+      // credential = { appid, secret }
+      return await wechat.verifyLogin(credential.appid, credential.secret);
+    default:
+      throw new Error(`平台 ${platformId} 尚未接入真实登录`);
+  }
+});
+
+/* ---------- 发布：渲染进程 → 主进程 → 平台 API ---------- */
 ipcMain.handle('platform:publish', async (_event, payload) => {
-  // TODO: 按平台实现开放 API 调用（如 CSDN/知乎 文档接口）
-  // payload = { platformId, apiKey, title, content, token }
-  throw new Error('平台开放 API 尚未接入，请使用「复制稿」模式发布');
+  const { platformId, credential, title, content, digest } = payload;
+  switch (platformId) {
+    case 'csdn': {
+      const res = await csdn.publish({
+        username: credential.username,
+        password: credential.password,
+        title,
+        content
+      });
+      return { ...res, platformName: 'CSDN' };
+    }
+    case 'wechat': {
+      const res = await wechat.publish({
+        appid: credential.appid,
+        secret: credential.secret,
+        title,
+        digest,
+        content
+      });
+      return { ...res, platformName: '微信公众号' };
+    }
+    default:
+      throw new Error(`平台 ${platformId} 尚未接入真实发布`);
+  }
 });
 
 app.whenReady().then(() => {

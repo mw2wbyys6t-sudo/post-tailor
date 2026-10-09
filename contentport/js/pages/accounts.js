@@ -129,9 +129,36 @@ window.CP = window.CP || {};
     }
   }
 
+  /* 各平台 API 登录所需凭据字段 */
+  const CRED_FIELDS = {
+    csdn: {
+      fields: [
+        { key: 'username', label: 'CSDN 用户名', ph: '登录 CSDN 的用户名 / 手机号', type: 'text' },
+        { key: 'password', label: 'CSDN 密码', ph: '登录密码（用于 MetaWeblog 自动发布）', type: 'password' }
+      ],
+      hint: '将通过 CSDN MetaWeblog（XML-RPC）接口校验账号并发布文章，与 Word 发布 CSDN 的方式相同。'
+    },
+    wechat: {
+      fields: [
+        { key: 'appid', label: '公众号 AppID', ph: '公众平台 → 设置与开发 → 基本配置', type: 'text' },
+        { key: 'secret', label: '公众号 AppSecret', ph: 'AppSecret（本机 IP 需加入白名单）', type: 'password' }
+      ],
+      hint: '将通过微信官方接口校验凭据，发布到公众号草稿箱。未认证的订阅号可能无法使用发布接口。'
+    },
+    xhs: {
+      fields: [{ key: 'token', label: '开放平台 Token', ph: '小红书开放平台 Token（演示）', type: 'password' }],
+      hint: '小红书自动发布接入中，当前先体验绑定流程。'
+    },
+    zhihu: {
+      fields: [{ key: 'token', label: '开放平台 Token', ph: '知乎开放平台 Token（演示）', type: 'password' }],
+      hint: '知乎自动发布接入中，当前先体验绑定流程。'
+    }
+  };
+
   /* ================= 登录弹窗 ================= */
   function openLoginModal(pid, root) {
     const p = M().PLATFORMS.find(x => x.id === pid);
+    const cfg = CRED_FIELDS[pid] || CRED_FIELDS.xhs;
     ui().openModal(`
       <div class="modal-head">
         <h3>登录 ${p.name} 账号</h3>
@@ -144,23 +171,24 @@ window.CP = window.CP || {};
             <div class="opt-ic" style="color:var(--primary)">${ui().icon('key', 17)}</div>
             <div>
               <div class="opt-l">开放 API 凭据</div>
-              <div class="opt-d">填写平台开放平台的 Token / Secret</div>
+              <div class="opt-d">${cfg.fields.length > 1 ? '账号 + 密码 / Secret' : '平台 Token'}</div>
             </div>
           </div>
           <div class="opt" data-method="cookie">
             <div class="opt-ic" style="color:var(--primary)">${ui().icon('globe', 17)}</div>
             <div>
               <div class="opt-l">浏览器 Cookie</div>
-              <div class="opt-d">粘贴网页版登录后的 Cookie（原型演示）</div>
+              <div class="opt-d">粘贴网页版登录后的 Cookie（演示）</div>
             </div>
           </div>
         </div>
         <div id="acc-form">
           <label class="label">账号昵称（显示用）</label>
           <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
-          <label class="label" style="margin-top:12px">开放平台 Token / 凭据</label>
-          <input class="input" id="acc-token" type="password" placeholder="粘贴 ${p.name} 开放平台 Token…" />
-          <div class="hint">真实接入后，系统将调用 ${p.name} 开放接口校验凭据并获取账号信息。</div>
+          ${cfg.fields.map(f => `
+            <label class="label" style="margin-top:12px">${f.label}</label>
+            <input class="input" id="acc-${f.key}" type="${f.type}" placeholder="${f.ph}" />`).join('')}
+          <div class="hint">${cfg.hint}</div>
         </div>
       </div>
       <div class="modal-foot">
@@ -180,32 +208,45 @@ window.CP = window.CP || {};
         form.innerHTML = method === 'api' ? `
           <label class="label">账号昵称（显示用）</label>
           <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
-          <label class="label" style="margin-top:12px">开放平台 Token / 凭据</label>
-          <input class="input" id="acc-token" type="password" placeholder="粘贴 ${p.name} 开放平台 Token…" />
-          <div class="hint">真实接入后，系统将调用 ${p.name} 开放接口校验凭据并获取账号信息。</div>` : `
+          ${cfg.fields.map(f => `
+            <label class="label" style="margin-top:12px">${f.label}</label>
+            <input class="input" id="acc-${f.key}" type="${f.type}" placeholder="${f.ph}" />`).join('')}
+          <div class="hint">${cfg.hint}</div>` : `
           <label class="label">账号昵称（显示用）</label>
           <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
           <label class="label" style="margin-top:12px">Cookie（完整复制）</label>
           <textarea class="textarea" id="acc-cookie" rows="4" placeholder="粘贴 ${p.name} 网页版登录后浏览器里的 Cookie 字符串…"></textarea>
-          <div class="hint">原型演示：真实接入将在 Electron 内打开 ${p.name} 登录页自动捕获 Cookie。</div>`;
+          <div class="hint">演示模式：真实接入将在 Electron 内打开 ${p.name} 登录页自动捕获 Cookie。</div>`;
       });
     });
 
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
     modal.querySelector('#acc-confirm').addEventListener('click', async () => {
       const nick = (document.getElementById('acc-nick') || {}).value?.trim() || '';
-      const token = (document.getElementById('acc-token') || {}).value?.trim() || '';
       const cookie = (document.getElementById('acc-cookie') || {}).value?.trim() || '';
+
+      // 按平台收集凭据
+      const credential = {};
+      let missing = '';
+      cfg.fields.forEach(f => {
+        const v = (document.getElementById('acc-' + f.key) || {}).value?.trim() || '';
+        credential[f.key] = v;
+        if (!v) missing = missing || `${f.label}不能为空`;
+      });
       if (!nick) { ui().toast('请填写账号昵称', 'warn'); return; }
-      if (method === 'api' && !token) { ui().toast('请粘贴开放平台 Token', 'warn'); return; }
+      if (method === 'api' && missing) { ui().toast(missing, 'warn'); return; }
       if (method === 'cookie' && !cookie) { ui().toast('请粘贴 Cookie', 'warn'); return; }
 
       const btn = modal.querySelector('#acc-confirm');
       btn.disabled = true;
       btn.innerHTML = ui().icon('refresh', 15) + ' 登录中…';
 
-      // TODO: 真实实现调用平台开放接口校验凭据 / 用捕获的 Cookie 验证登录
-      const res = await CP.api.loginAccount(pid, { method, nickname: nick, token, cookie });
+      const res = await CP.api.loginAccount(pid, {
+        method,
+        nickname: nick,
+        credential: method === 'api' ? credential : null,
+        cookie: method === 'cookie' ? cookie : ''
+      });
       btn.innerHTML = ui().icon('check', 15) + ' 完成';
 
       if (res.code === 0) {
@@ -215,8 +256,8 @@ window.CP = window.CP || {};
           nickname: res.data.nickname || nick,
           method,
           updatedAt: new Date().toLocaleDateString('zh-CN'),
-          // 仅存本机；真实凭据可加密后存于 Electron safeStorage
-          credential: method === 'api' ? token : cookie
+          // 仅存本机；CSDN=用户名+密码，微信=AppID+AppSecret，其余平台=Token/Cookie
+          credential: method === 'api' ? credential : { cookie }
         };
         saveAccounts(accounts);
         ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, 'ok');
