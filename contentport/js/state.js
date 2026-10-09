@@ -33,7 +33,10 @@ window.CP = window.CP || {};
     portrait: load(LS.portrait, null),            // 用户画像（问答结果）
     articles: load(LS.articles, null),            // 文章库（含用户新增）
     history: load(LS.history, null),              // 发布记录
-    settings: load(LS.settings, { ai: { baseUrl: '', apiKey: '', model: '' } }),
+    settings: load(LS.settings, {
+      ai: { baseUrl: '', apiKey: '', model: '' },
+      autoPull: { enabled: true, interval: 30 }
+    }),
     sniffDone: load(LS.sniffDone, false),         // 是否完成过嗅探
     /* ---- 会话内 UI 状态 ---- */
     ui: {

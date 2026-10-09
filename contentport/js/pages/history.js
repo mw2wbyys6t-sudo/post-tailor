@@ -129,26 +129,29 @@ window.CP = window.CP || {};
   /* ---------- 批量回拉全部可回拉的记录 ---------- */
   async function pullAll() {
     const root = document.getElementById('content');
-    const targets = S().history.filter(h => (h.postId || h.publishId) && h.platformId !== 'xhs');
-    if (!targets.length) { ui().toast('没有可回拉数据的记录', 'info'); return; }
     const btn = root.querySelector('[data-act="pull-all"]');
     btn.disabled = true;
     const old = btn.innerHTML;
     btn.innerHTML = ui().icon('refresh', 14) + ' 回拉中…';
-    let ok = 0, fail = 0, firstFail = '';
-    for (const h of targets) {
-      const r = await doPull(h);
-      if (r.ok) ok++; else { fail++; firstFail = firstFail || r.msg; }
-    }
+    const r = await CP.api.pullAllStats();
     btn.disabled = false;
     btn.innerHTML = old;
     renderTable(root);
-    if (fail) {
-      ui().toast(`回拉完成：${ok} 条成功，${fail} 条失败（${ui().esc(firstFail)}）`, 'warn');
+    if (r.total === 0) { ui().toast('没有可回拉数据的记录', 'info'); return; }
+    if (r.fail) {
+      ui().toast(`回拉完成：${r.updated} 条成功，${r.fail} 条失败（${ui().esc(r.firstFail)}）`, 'warn');
     } else {
-      ui().toast(`已回拉 ${ok} 条记录的数据`, 'ok');
+      ui().toast(`已回拉 ${r.updated} 条记录的数据`, 'ok');
     }
   }
+
+  /* ---------- 自动回拉完成后，若正停留在本页则刷新表格 ---------- */
+  window.addEventListener('cp:stats-updated', () => {
+    if (document.body.dataset.page === 'history') {
+      const content = document.getElementById('content');
+      if (content && content.querySelector('#h-body')) renderTable(content);
+    }
+  });
 
   /* ---------- 回拉单条平台数据 ---------- */
   async function pullStats(root, id, btn) {

@@ -120,6 +120,7 @@ window.CP = window.CP || {};
   function openSettings() {
     const s = S().settings;
     const platforms = s.platforms || {};
+    const ap = s.autoPull || { enabled: true, interval: 30 };
     ui().openModal(`
       <div class="modal-head">
         <h3>设置</h3>
@@ -147,6 +148,19 @@ window.CP = window.CP || {};
               <input class="input" data-pk="${p.id}" type="password" placeholder="可选" value="${ui().esc(platforms[p.id] || '')}" />
             </div>`).join('')}
         </div>
+        <div class="divider"></div>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('clock', 14)} 数据自动回拉</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+          <input type="checkbox" id="ap-enabled" ${ap.enabled ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--primary)" />
+          <label for="ap-enabled" style="font-size:13px;cursor:pointer">定时自动更新各平台发布数据的阅读 / 点赞 / 评论</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <label class="label" style="margin:0">回拉间隔</label>
+          <select class="select" id="ap-interval" style="width:auto">
+            ${[15, 30, 60, 180].map(m => `<option value="${m}" ${(ap.interval || 30) === m ? 'selected' : ''}>每 ${m} 分钟</option>`).join('')}
+          </select>
+          <span class="hint" style="margin:0">关闭开关可立即停止自动回拉</span>
+        </div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
@@ -168,7 +182,8 @@ window.CP = window.CP || {};
           apiKey: document.getElementById('set-key').value.trim(),
           model: document.getElementById('set-model').value.trim()
         },
-        platforms: collectPlatformKeys()
+        platforms: collectPlatformKeys(),
+        autoPull: collectAutoPull()
       });
       try {
         const res = await CP.api.aiPing();
@@ -190,10 +205,12 @@ window.CP = window.CP || {};
           apiKey: document.getElementById('set-key').value.trim(),
           model: document.getElementById('set-model').value.trim()
         },
-        platforms: collectPlatformKeys()
+        platforms: collectPlatformKeys(),
+        autoPull: collectAutoPull()
       });
       ui().toast('配置已保存（存于本机）', 'ok');
       modal.closest('.modal-wrap').querySelector('[data-close]').click();
+      restartAutoPull();
     });
 
     function collectPlatformKeys() {
@@ -204,6 +221,40 @@ window.CP = window.CP || {};
       });
       return out;
     }
+
+    function collectAutoPull() {
+      return {
+        enabled: !!modal.querySelector('#ap-enabled').checked,
+        interval: parseInt(modal.querySelector('#ap-interval').value, 10) || 30
+      };
+    }
+  }
+
+  /* ---------- 自动定时回拉 ---------- */
+  let autoPullTimer = null;
+  let autoPullFirstDelay = null;
+
+  function restartAutoPull() {
+    if (autoPullTimer) { clearInterval(autoPullTimer); autoPullTimer = null; }
+    if (autoPullFirstDelay) { clearTimeout(autoPullFirstDelay); autoPullFirstDelay = null; }
+    const ap = S().settings.autoPull || {};
+    // 未配置过（老版本存档）默认开启；显式关闭才停止
+    if (ap.enabled === false) return;
+    const mins = Math.max(5, ap.interval || 30);
+
+    // 启动后延迟执行一次（给页面与登录态就绪时间），之后按间隔执行
+    autoPullFirstDelay = setTimeout(() => runAutoPullOnce(), 2 * 60 * 1000);
+    autoPullTimer = setInterval(runAutoPullOnce, mins * 60 * 1000);
+  }
+
+  async function runAutoPullOnce() {
+    const r = await CP.api.pullAllStats();
+    if (r.total === 0) return;
+    if (r.updated > 0) {
+      ui().toast(`已自动更新 ${r.updated} 条发布数据` + (r.fail ? `，${r.fail} 条失败` : ''), r.fail ? 'warn' : 'info');
+    } else if (r.fail > 0) {
+      ui().toast(`自动回拉：${r.fail} 条记录更新失败（${ui().esc(r.firstFail)}）`, 'warn');
+    }
   }
 
   /* ---------- 初始化 ---------- */
@@ -211,6 +262,7 @@ window.CP = window.CP || {};
     renderShell();
     render();
     window.addEventListener('hashchange', render);
+    restartAutoPull();
   }
 
   document.addEventListener('DOMContentLoaded', init);

@@ -466,6 +466,37 @@ ${article.body}
       } catch (e) {
         return { code: 1, msg: e.message || '数据回拉失败' };
       }
+    },
+
+    /* --------------------------------------------------------
+       POST /api/stats/pull-all  —— 批量回拉所有可回拉的发布记录
+       供「回拉全部数据」按钮与自动定时回拉共用
+       -------------------------------------------------------- */
+    async pullAllStats() {
+      const targets = S().history.filter(h => (h.postId || h.publishId) && h.platformId !== 'xhs');
+      let updated = 0, fail = 0, firstFail = '';
+      for (const h of targets) {
+        const res = await this.fetchStats({ platformId: h.platformId, postId: h.postId || h.publishId });
+        if (res.code === 0) {
+          const d = res.data;
+          const patch = {
+            views: Number(d.views) || 0,
+            likes: Number(d.likes) || 0,
+            comments: Number(d.comments) || 0,
+            lastSync: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+          };
+          if (d.status) patch.remoteStatus = d.status;
+          CP.actions.updateHistory(h.id, patch);
+          updated++;
+        } else {
+          fail++;
+          firstFail = firstFail || res.msg;
+        }
+      }
+      if (targets.length > 0) {
+        try { window.dispatchEvent(new Event('cp:stats-updated')); } catch (_) { /* ignore */ }
+      }
+      return { total: targets.length, updated, fail, firstFail };
     }
   };
 
