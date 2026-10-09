@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   callAI: (payload) => ipcRenderer.invoke('ai:call', payload),
   // 平台登录校验（真实 API）
   loginTo: (payload) => ipcRenderer.invoke('platform:login', payload),
+  // 扫码登录（打开平台登录页，捕获 Cookie）
+  loginOAuth: (payload) => ipcRenderer.invoke('platform:login-oauth', payload),
   // 平台自动发布（真实 API）
   publishTo: (payload) => ipcRenderer.invoke('platform:publish', payload),
   // 环境信息

@@ -83,7 +83,7 @@ window.CP = window.CP || {};
             <div class="sidebar-avatar" style="width:38px;height:38px;background:linear-gradient(135deg,${p.color},${p.color}cc)">${ui().esc((acc.nickname || '?')[0]).toUpperCase()}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ui().esc(acc.nickname || '已登录账号')}</div>
-              <div style="font-size:11.5px;color:var(--ink-3)">${acc.method === 'api' ? '开放 API 凭据' : '浏览器 Cookie'} · ${ui().esc(acc.updatedAt || '')}</div>
+              <div style="font-size:11.5px;color:var(--ink-3)">${acc.method === 'api' ? '开放 API 凭据' : (acc.method === 'oauth' ? '扫码登录（浏览器）' : '浏览器 Cookie')} · ${ui().esc(acc.updatedAt || '')}</div>
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:14px">
@@ -147,18 +147,22 @@ window.CP = window.CP || {};
     },
     xhs: {
       fields: [{ key: 'token', label: '开放平台 Token', ph: '小红书开放平台 Token（演示）', type: 'password' }],
-      hint: '小红书自动发布接入中，当前先体验绑定流程。'
+      hint: '推荐使用「扫码登录」：打开小红书创作者平台扫码即可；也可以手动粘贴网页版 Cookie。'
     },
     zhihu: {
       fields: [{ key: 'token', label: '开放平台 Token', ph: '知乎开放平台 Token（演示）', type: 'password' }],
-      hint: '知乎自动发布接入中，当前先体验绑定流程。'
+      hint: '推荐使用「扫码登录」：打开知乎登录页扫码即可；也可以手动粘贴网页版 Cookie。'
     }
   };
+
+  /* 支持扫码登录（Electron 打开官方登录页）的平台 */
+  const OAUTH_PLATFORMS = ['zhihu', 'xhs'];
 
   /* ================= 登录弹窗 ================= */
   function openLoginModal(pid, root) {
     const p = M().PLATFORMS.find(x => x.id === pid);
     const cfg = CRED_FIELDS[pid] || CRED_FIELDS.xhs;
+    const useOauth = OAUTH_PLATFORMS.includes(pid);
     ui().openModal(`
       <div class="modal-head">
         <h3>登录 ${p.name} 账号</h3>
@@ -167,29 +171,30 @@ window.CP = window.CP || {};
       <div class="modal-body">
         <div class="label">登录方式</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          ${useOauth ? `
+          <div class="opt on" data-method="oauth">
+            <div class="opt-ic" style="color:var(--primary)">${ui().icon('globe', 17)}</div>
+            <div>
+              <div class="opt-l">扫码登录</div>
+              <div class="opt-d">打开 ${p.name} 官方登录页，扫码完成</div>
+            </div>
+          </div>` : `
           <div class="opt on" data-method="api">
             <div class="opt-ic" style="color:var(--primary)">${ui().icon('key', 17)}</div>
             <div>
               <div class="opt-l">开放 API 凭据</div>
               <div class="opt-d">${cfg.fields.length > 1 ? '账号 + 密码 / Secret' : '平台 Token'}</div>
             </div>
-          </div>
+          </div>`}
           <div class="opt" data-method="cookie">
-            <div class="opt-ic" style="color:var(--primary)">${ui().icon('globe', 17)}</div>
+            <div class="opt-ic" style="color:var(--primary)">${ui().icon('copy', 17)}</div>
             <div>
               <div class="opt-l">浏览器 Cookie</div>
-              <div class="opt-d">粘贴网页版登录后的 Cookie（演示）</div>
+              <div class="opt-d">粘贴网页版登录后的 Cookie</div>
             </div>
           </div>
         </div>
-        <div id="acc-form">
-          <label class="label">账号昵称（显示用）</label>
-          <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
-          ${cfg.fields.map(f => `
-            <label class="label" style="margin-top:12px">${f.label}</label>
-            <input class="input" id="acc-${f.key}" type="${f.type}" placeholder="${f.ph}" />`).join('')}
-          <div class="hint">${cfg.hint}</div>
-        </div>
+        <div id="acc-form"></div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
@@ -199,13 +204,14 @@ window.CP = window.CP || {};
     const modal = document.querySelector('.modal');
     const methodEls = modal.querySelectorAll('[data-method]');
     const form = modal.querySelector('#acc-form');
-    let method = 'api';
+    const initialMethod = useOauth ? 'oauth' : 'api';
+    let method = initialMethod;
 
-    methodEls.forEach(el => {
-      el.addEventListener('click', () => {
-        methodEls.forEach(x => x.classList.toggle('on', x === el));
-        method = el.dataset.method;
-        form.innerHTML = method === 'api' ? `
+    const renderForm = (m) => {
+      form.innerHTML = m === 'oauth' ? `
+          <div style="display:flex;align-items:center;gap:10px;padding:14px;background:var(--surface-2);border-radius:10px;margin-bottom:6px">
+            ${ui().icon('info', 16)}<span style="font-size:13px;color:var(--ink-2)">即将打开 ${p.name} 官方登录窗口，请在弹出的窗口中用手机扫码或账号登录，完成后自动返回。</span>
+          </div>` : m === 'api' ? `
           <label class="label">账号昵称（显示用）</label>
           <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
           ${cfg.fields.map(f => `
@@ -217,6 +223,14 @@ window.CP = window.CP || {};
           <label class="label" style="margin-top:12px">Cookie（完整复制）</label>
           <textarea class="textarea" id="acc-cookie" rows="4" placeholder="粘贴 ${p.name} 网页版登录后浏览器里的 Cookie 字符串…"></textarea>
           <div class="hint">演示模式：真实接入将在 Electron 内打开 ${p.name} 登录页自动捕获 Cookie。</div>`;
+    };
+    renderForm(initialMethod);
+
+    methodEls.forEach(el => {
+      el.addEventListener('click', () => {
+        methodEls.forEach(x => x.classList.toggle('on', x === el));
+        method = el.dataset.method;
+        renderForm(method);
       });
     });
 
@@ -224,6 +238,34 @@ window.CP = window.CP || {};
     modal.querySelector('#acc-confirm').addEventListener('click', async () => {
       const nick = (document.getElementById('acc-nick') || {}).value?.trim() || '';
       const cookie = (document.getElementById('acc-cookie') || {}).value?.trim() || '';
+
+      // 扫码登录：直接打开官方登录页
+      if (method === 'oauth') {
+        const btn = modal.querySelector('#acc-confirm');
+        btn.disabled = true;
+        btn.innerHTML = ui().icon('refresh', 15) + ' 等待扫码登录…';
+        const res = await CP.api.loginOAuth(pid);
+        btn.innerHTML = ui().icon('check', 15) + ' 完成';
+        if (res.code === 0) {
+          const accounts = getAccounts();
+          accounts[pid] = {
+            linked: true,
+            nickname: res.data.nickname,
+            method: 'oauth',
+            updatedAt: new Date().toLocaleDateString('zh-CN'),
+            credential: { cookie: res.data.cookie }
+          };
+          saveAccounts(accounts);
+          ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, 'ok');
+          modal.closest('.modal-wrap').querySelector('[data-close]').click();
+          renderCardAll(root);
+        } else {
+          ui().toast(res.msg || '扫码登录失败', 'warn');
+          btn.disabled = false;
+          btn.innerHTML = ui().icon('check', 15) + ' 登录';
+        }
+        return;
+      }
 
       // 按平台收集凭据
       const credential = {};

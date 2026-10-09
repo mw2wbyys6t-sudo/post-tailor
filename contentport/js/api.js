@@ -12,8 +12,10 @@ window.CP = window.CP || {};
   const M = () => CP.mock;
   const S = () => CP.state;
 
-  /* 已接入真实发布 API 的平台（其余平台已绑定账号时仍走复制稿） */
-  const REAL_PLATFORM_IDS = ['csdn', 'wechat'];
+  /* 已接入真实发布通道的平台：
+     csdn / wechat / zhihu 走官方或网页内部 API 自动发布；
+     xhs 走浏览器辅助发布（打开官方发布页，自动填入标题 + 正文入剪贴板） */
+  const REAL_PLATFORM_IDS = ['csdn', 'wechat', 'zhihu', 'xhs'];
 
   /* ========================================================
      AI 调用基础（OpenAI 兼容 /chat/completions）
@@ -320,8 +322,8 @@ ${article.body}
        credential 按平台结构：
          csdn   → { username, password }
          wechat → { appid, secret }
-         xhs / zhihu → { token }（暂为演示）
-       Electron：走主进程平台通道（CSDN MetaWeblog / 微信 API）
+         zhihu / xhs → { cookie }（扫码登录捕获）
+       Electron：走主进程平台通道（CSDN MetaWeblog / 微信 API / 知乎·小红书 Cookie）
        浏览器：返回模拟结果（演示）
        -------------------------------------------------------- */
     async loginAccount(platformId, { method, nickname, credential, cookie } = {}) {
@@ -332,8 +334,15 @@ ${article.body}
       // 真实登录通道（Electron）
       const electron = window.electronAPI;
       if (electron && typeof electron.loginTo === 'function') {
+        // CSDN/微信只支持开放凭据（MetaWeblog 需用户名+密码，微信需 AppID+Secret）
+        if (method === 'cookie' && (platformId === 'csdn' || platformId === 'wechat')) {
+          return { code: 1, msg: `${plat.name} 暂不支持 Cookie 登录，请使用开放 API 凭据` };
+        }
         try {
-          const info = await electron.loginTo({ platformId, credential: credential || {} });
+          // 手动 Cookie 方式：把 cookie 装进凭据，主进程直接校验
+          const cred = credential || {};
+          if (method === 'cookie' && cookie && !cred.cookie) cred.cookie = cookie;
+          const info = await electron.loginTo({ platformId, credential: cred });
           return { code: 0, data: { nickname: info.nickname, method: info.method } };
         } catch (e) {
           return { code: 1, msg: e.message || '登录校验失败' };
@@ -347,6 +356,24 @@ ${article.body}
     },
 
     /* --------------------------------------------------------
+       POST /api/accounts/login-oauth  —— 扫码登录（打开平台登录页）
+       body: { platformId }
+       仅 Electron 可用：知乎 / 小红书
+       -------------------------------------------------------- */
+    async loginOAuth(platformId) {
+      const electron = window.electronAPI;
+      if (electron && typeof electron.loginOAuth === 'function') {
+        try {
+          const info = await electron.loginOAuth({ platformId });
+          return { code: 0, data: { cookie: info.cookie, nickname: info.nickname, method: info.method || 'oauth' } };
+        } catch (e) {
+          return { code: 1, msg: e.message || '扫码登录失败' };
+        }
+      }
+      return { code: 1, msg: '扫码登录仅支持 Electron 桌面版' };
+    },
+
+    /* --------------------------------------------------------
        POST /api/publish  —— 发布文章到平台
        实际模式：接平台开放 API 自动发布；未接入时生成复制稿
        -------------------------------------------------------- */
@@ -357,10 +384,16 @@ ${article.body}
       // 已登录账号 → 自动发布；否则复制稿模式
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];
-      // 仅「已接入真实 API 的平台 + 已绑定账号」才走自动发布
+      // 凭据形状校验：按平台确认关键字段齐全，避免带错凭据去请求
+      const c = (acc && acc.credential) || {};
+      const credOk = platformId === 'csdn' ? (c.username && c.password)
+        : platformId === 'wechat' ? (c.appid && c.secret)
+        : (platformId === 'zhihu' || platformId === 'xhs') ? !!c.cookie
+        : false;
+      // 仅「已接入真实通道 + 已绑定账号 + 凭据完整」才走自动发布
       const realReady = REAL_PLATFORM_IDS.includes(platformId);
-      const autoPublish = !!(acc && acc.linked && acc.credential && realReady);
-      const pendingReal = !!(acc && acc.linked && acc.credential && !realReady);
+      const autoPublish = !!(acc && acc.linked && credOk && realReady);
+      const pendingReal = !!(acc && acc.linked && !credOk && realReady);
       const rec = {
         id: 'h' + Date.now(),
         articleId,
@@ -385,6 +418,13 @@ ${article.body}
             content: body,
             digest: (article && article.summary) || ''
           });
+          // 小红书：已打开官方发布页，等待用户页面确认
+          if (result.status === 'opened') {
+            rec.status = '已打开发布页';
+            rec.link = '';
+            CP.actions.addHistory(rec);
+            return { code: 0, data: { rec, mode: 'auto', openedPage: true, platformName: result.platformName || platform.name, note: result.note || '' } };
+          }
           rec.status = '已发布';
           rec.link = result.url || result.link || '';
           if (result.publish_id) rec.publishId = result.publish_id;

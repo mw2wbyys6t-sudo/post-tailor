@@ -237,16 +237,26 @@ window.CP = window.CP || {};
     return accounts[pid] && accounts[pid].linked ? accounts[pid] : null;
   }
 
+  /* 凭据是否完整（与 api.js 的自动发布判定一致） */
+  function credOkOf(pid, acc) {
+    const c = (acc && acc.credential) || {};
+    return pid === 'csdn' ? !!(c.username && c.password)
+      : pid === 'wechat' ? !!(c.appid && c.secret)
+      : (pid === 'zhihu' || pid === 'xhs') ? !!c.cookie
+      : false;
+  }
+
   async function doPublish(root, pid) {
     const articleId = S().ui.activeArticleId;
     const r = S().ui.rewriteResults[pid];
     if (!r) return;
     const p = M().PLATFORMS.find(x => x.id === pid);
     const acc = accountOf(pid);
-    // 已接入真实发布 API 且已绑定账号 → 自动发布；否则复制稿
+    // 已接入真实发布通道且凭据完整 → 自动发布；否则复制稿
     const realSupport = (window.CP.REAL_PLATFORM_IDS || []).includes(pid);
-    const autoMode = !!(acc && realSupport);
-    const pendingMode = !!(acc && !realSupport);
+    const isXhs = pid === 'xhs'; // 小红书为浏览器辅助发布
+    const autoMode = !!(acc && realSupport && credOkOf(pid, acc));
+    const pendingMode = !!(acc && realSupport && !credOkOf(pid, acc));
 
     ui().openModal(`
       <div class="modal-head">
@@ -264,12 +274,14 @@ window.CP = window.CP || {};
         </div>
         <div class="fact" style="margin-bottom:10px">
           <div class="f-l">发布模式</div>
-          <div class="f-v" style="font-weight:600">${autoMode ? '自动发布（以你的账号直接发布）' : (pendingMode ? '复制稿模式（该平台自动发布接入中）' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
+          <div class="f-v" style="font-weight:600">${autoMode ? (isXhs ? '浏览器辅助发布（打开官方发布页确认）' : '自动发布（以你的账号直接发布）') : (pendingMode ? '凭据不完整，请到账号中心重新登录' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
         </div>
         <div class="hint">${autoMode
-          ? `系统将以 ${ui().esc(acc.nickname)} 的身份调用 ${p.name} 发布接口。`
+          ? (isXhs
+            ? `系统将打开小红书官方发布页，自动填入标题、正文复制到剪贴板，请在页面中粘贴正文并确认发布。`
+            : `系统将以 ${ui().esc(acc.nickname)} 的身份调用 ${p.name} 发布接口。`)
           : (pendingMode
-            ? `${p.name} 自动发布接口接入中，已绑定账号暂未启用，先生成复制稿手动发布。`
+            ? `已绑定账号但凭据不完整，请到「账号中心」重新登录 ${p.name} 后自动发布。`
             : '未绑定账号时推荐使用复制稿模式，最稳定；也可以先到「账号中心」登录该平台账号后自动发布。')}</div>
       </div>
       <div class="modal-foot">
@@ -317,10 +329,12 @@ window.CP = window.CP || {};
     });
     btn.innerHTML = ui().icon('check', 15) + ' 完成';
     modal.closest('.modal-wrap').querySelector('[data-close]').click();
-    if (res.data.mode === 'auto') {
+    if (res.data.openedPage) {
+      ui().toast(`已打开${res.data.platformName}发布页：标题已填入（若失败请粘贴），正文已复制，请在页面确认发布`, 'info');
+    } else if (res.data.mode === 'auto') {
       ui().toast(`已通过 ${ui().esc(acc ? acc.nickname : '你的账号')} 发布到 ${res.data.platformName}`, 'ok');
     } else if (res.data.pendingReal) {
-      ui().toast(`${res.data.platformName} 自动发布接入中，已生成复制稿，请手动粘贴发布`, 'info');
+      ui().toast(`${res.data.platformName} 凭据不完整，已生成复制稿；请到账号中心重新登录后自动发布`, 'info');
     } else {
       ui().toast(`已生成 ${res.data.platformName} 复制稿，请粘贴发布`, 'ok');
     }
