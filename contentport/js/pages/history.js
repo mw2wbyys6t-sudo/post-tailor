@@ -96,7 +96,9 @@ window.CP = window.CP || {};
               <td style="font-size:12px;color:var(--ink-3)">${h.time}${h.lastSync ? `<div style="font-size:11px;color:var(--ink-4)">${h.lastSync} 更新</div>` : ''}</td>
               <td>
                 <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
+                  ${(h.series && h.series.length > 1) ? `<button class="btn btn-ghost btn-sm" data-trend="${h.id}">${ui().icon('activity', 12)} 趋势</button>` : ''}
                   ${canPull ? `<button class="btn btn-ghost btn-sm" data-stats="${h.id}">${ui().icon('refresh', 12)} 回拉数据</button>` : ''}
+                  ${h.copyContent ? `<button class="btn btn-ghost btn-sm" data-export="${h.id}">${ui().icon('download', 12)} 导出</button>` : ''}
                   ${h.link ? `<a class="btn btn-ghost btn-sm" href="${href}" target="_blank" rel="noopener">${ui().icon('link', 13)} 查看</a>` : ''}
                 </div>
               </td>
@@ -108,6 +110,58 @@ window.CP = window.CP || {};
     body.querySelectorAll('[data-stats]').forEach(btn => {
       btn.addEventListener('click', () => pullStats(root, btn.dataset.stats, btn));
     });
+    body.querySelectorAll('[data-trend]').forEach(btn => {
+      btn.addEventListener('click', () => showTrend(btn.dataset.trend));
+    });
+    body.querySelectorAll('[data-export]').forEach(btn => {
+      btn.addEventListener('click', () => exportCopy(btn.dataset.export));
+    });
+  }
+
+  /* ---------- 趋势弹窗（纯 SVG 折线图） ---------- */
+  function showTrend(id) {
+    const h = S().history.find(x => x.id === id);
+    if (!h || !h.series || h.series.length < 2) { ui().toast('趋势数据不足，请多次回拉后再查看', 'warn'); return; }
+    const p = M().PLATFORMS.find(x => x.id === h.platformId) || { name: '平台', color: '#888888' };
+    const s = h.series;
+    const labels = s.map(x => x.t);
+    ui().openModal(`
+      <div class="modal-head">
+        <h3>${p.name} · 数据趋势</h3>
+        <p>最近 ${s.length} 次回拉的阅读 / 点赞 / 评论变化。</p>
+      </div>
+      <div class="modal-body">
+        <div class="label">阅读量</div>
+        ${ui().lineChart({ points: s.map(x => x.views), labels, color: p.color, height: 170 })}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px">
+          <div class="card" style="padding:12px">
+            <div class="label">点赞</div>
+            ${ui().lineChart({ points: s.map(x => x.likes), labels, color: '#E8A33D', height: 120, fill: false })}
+          </div>
+          <div class="card" style="padding:12px">
+            <div class="label">评论</div>
+            ${ui().lineChart({ points: s.map(x => x.comments), labels, color: '#4D8DFF', height: 120, fill: false })}
+          </div>
+        </div>
+        <div class="hint" style="margin-top:14px">最新：阅读 ${ui().fmtNum(h.views)} · 点赞 ${ui().fmtNum(h.likes)} · 评论 ${ui().fmtNum(h.comments)}（${h.lastSync ? h.lastSync + ' 更新' : '尚未回拉'}）</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-mclose>关闭</button>
+      </div>`, { width: 620 });
+    const modal = document.querySelector('.modal');
+    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+  }
+
+  /* ---------- 复制稿导出为 Markdown 文件 ---------- */
+  function exportCopy(id) {
+    const h = S().history.find(x => x.id === id);
+    if (!h || !h.copyContent) { ui().toast('该记录没有可导出的复制稿', 'warn'); return; }
+    const a = CP.actions.getArticle(h.articleId);
+    const title = h.copyContent.title || (a && a.title) || '未命名文章';
+    const md = `# ${title}\n\n${h.copyContent.body || (a && a.body) || ''}\n`;
+    const safeName = String(title).replace(/[\\/:*?"<>|\n]/g, '').slice(0, 30) || 'copy';
+    ui().downloadFile(`ContentPort-${safeName}.md`, md, 'text/markdown');
+    ui().toast('复制稿已导出为 Markdown 文件', 'ok');
   }
 
   /* ---------- 单条数据回拉 ---------- */
@@ -119,6 +173,7 @@ window.CP = window.CP || {};
       views: Number(d.views) || 0,
       likes: Number(d.likes) || 0,
       comments: Number(d.comments) || 0,
+      series: CP.api.snapshotSeries(h, d),
       lastSync: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     };
     if (d.status) patch.remoteStatus = d.status;

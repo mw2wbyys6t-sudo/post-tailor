@@ -111,6 +111,54 @@ window.CP = window.CP || {};
     return String(n);
   }
 
+  /* ---------- 折线图（纯 SVG，无依赖） ----------
+     points: number[]；labels: 首/中/末 时间标签
+     color 可为 CSS 变量（通过 currentColor 应用） */
+  function lineChart({ points, labels = [], width = 560, height = 180, color = 'var(--primary)', fill = true } = {}) {
+    const pts = (points || []).map(Number);
+    if (!pts.length) return '<div class="hint" style="padding:40px 0;text-align:center">暂无数据</div>';
+    if (pts.length === 1) {
+      return `<div style="display:flex;align-items:center;gap:10px;padding:30px 8px">
+        <span style="width:10px;height:10px;border-radius:50%;background:currentColor;color:${esc(color)}"></span>
+        <span style="font-size:20px;font-weight:700">${fmtNum(pts[0])}</span>
+        <span class="hint" style="margin:0">首个数据点，继续回拉将生成趋势</span>
+      </div>`;
+    }
+    const padL = 6, padR = 6, padT = 14, padB = 22;
+    const min = Math.min(...pts), max = Math.max(...pts);
+    const range = (max - min) || 1;
+    const X = (i) => padL + i * (width - padL - padR) / (pts.length - 1);
+    const Y = (v) => padT + (1 - (v - min) / range) * (height - padT - padB);
+    const line = pts.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const area = `${line} L${X(pts.length - 1).toFixed(1)},${height - padB} L${X(0).toFixed(1)},${height - padB} Z`;
+    const gridY = [0, 0.5, 1].map(t => Math.round(min + t * range)).filter((v, i, a) => a.indexOf(v) === i);
+    const mid = Math.floor((pts.length - 1) / 2);
+    const ticks = [0, mid, pts.length - 1].filter((v, i, a) => a.indexOf(v) === i);
+    const tickLabels = ticks.map(i => (labels && labels[i]) || `#${i + 1}`);
+    return `
+      <svg viewBox="0 0 ${width} ${height}" style="color:${esc(color)};display:block;width:100%;height:auto" role="img" aria-label="数据趋势">
+        ${gridY.map(v => `<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${width - padR}" y2="${Y(v).toFixed(1)}" style="stroke:var(--border)" stroke-width="1"/>`).join('')}
+        ${gridY.map(v => `<text x="${padL + 2}" y="${(Y(v) - 4).toFixed(1)}" font-size="9" style="fill:var(--ink-4)" text-anchor="start">${fmtNum(v)}</text>`).join('')}
+        ${fill ? `<path d="${area}" fill="currentColor" opacity=".12"/>` : ''}
+        <path d="${line}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        ${pts.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" fill="#fff" stroke="currentColor" stroke-width="2"><title>${fmtNum(v)}</title></circle>`).join('')}
+        ${ticks.map((i, k) => `<text x="${X(i).toFixed(1)}" y="${height - 6}" font-size="9.5" style="fill:var(--ink-4)" text-anchor="${k === 0 ? 'start' : k === ticks.length - 1 ? 'end' : 'middle'}">${esc(tickLabels[k])}</text>`).join('')}
+      </svg>`;
+  }
+
+  /* ---------- 下载文件（Blob） ---------- */
+  function downloadFile(filename, content, mime = 'text/plain') {
+    const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
   /* markdown 渲染：## 标题 / > 引用 / - 列表 / 表格 / 普通段落 / 代码块 / 加粗 */
   function renderMd(md) {
     const bold = (s) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -198,7 +246,7 @@ window.CP = window.CP || {};
     return `<div class="skeleton">${s}</div>`;
   }
 
-  window.CP.ui = { icon, toast, openModal, esc, fmtNum, renderMd, skeleton, ICONS };
+  window.CP.ui = { icon, toast, openModal, esc, fmtNum, renderMd, skeleton, ICONS, lineChart, downloadFile };
 
   /* ---------- 页面注册表（供各页面脚本在加载时注册） ---------- */
   const PAGES = {};

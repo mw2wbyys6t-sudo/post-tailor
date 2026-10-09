@@ -18,6 +18,11 @@ window.CP = window.CP || {};
     const totalViews = published.reduce((s, h) => s + h.views, 0);
     const totalLikes = published.reduce((s, h) => s + h.likes, 0);
 
+    /* 内容表现趋势：合并所有已发布记录的回拉快照，按时间累计阅读 */
+    const seriesAll = published.filter(h => Array.isArray(h.series) && h.series.length)
+      .flatMap(h => h.series.map(s => ({ t: s.t, views: Number(s.views) || 0 })));
+    const trend = buildTrend(seriesAll);
+
     const flowDone = {
       profile: !!portrait,
       sniff: S().sniffDone,
@@ -80,6 +85,20 @@ window.CP = window.CP || {};
           <div class="stat-val">${avgScore(history)}</div>
           <div class="stat-lbl">平均适配度</div>
           <div class="stat-delta up">${ui().icon('trending', 13)} 高于行业均值 12%</div>
+        </div>
+      </div>
+
+      <div class="card fade-up" style="margin-bottom:18px">
+        <div class="card-head">
+          <h3>内容表现趋势</h3>
+          <span class="hint">累计阅读（随自动 / 手动回拉更新）</span>
+        </div>
+        <div class="card-body">
+          ${trend.points.length > 1
+            ? ui().lineChart({ points: trend.points, labels: trend.labels, color: '#0FA08F', height: 170 })
+            : `<div style="display:flex;align-items:center;gap:10px;padding:18px 8px;color:var(--ink-3)">
+                ${ui().icon('activity', 18)}<span style="font-size:13px">暂无趋势数据 —— 发布文章后，点击「回拉数据」或开启「自动定时回拉」即可生成趋势。</span>
+              </div>`}
         </div>
       </div>
 
@@ -207,6 +226,16 @@ window.CP = window.CP || {};
     const valid = history.filter(h => h.score > 0);
     if (!valid.length) return '—';
     return Math.round(valid.reduce((s, h) => s + h.score, 0) / valid.length);
+  }
+
+  /* 按时间点聚合所有快照的阅读量，并逐点累计为总阅读曲线 */
+  function buildTrend(seriesAll) {
+    const byTime = {};
+    seriesAll.forEach(s => { byTime[s.t] = (byTime[s.t] || 0) + (Number(s.views) || 0); });
+    const times = Object.keys(byTime).sort();
+    let acc = 0;
+    const points = times.map(t => { acc += byTime[t]; return acc; });
+    return { points, labels: times, total: acc };
   }
 
   function heatOf(pid) {

@@ -177,6 +177,7 @@ window.CP = window.CP || {};
       <div class="rewrite-toolbar">
         <button class="btn btn-primary" data-act="publish" data-pid="${pid}">${ui().icon('send', 15)} 一键发布</button>
         <button class="btn btn-ghost" data-act="copy" data-pid="${pid}">${ui().icon('copy', 15)} 复制改写稿</button>
+        <button class="btn btn-ghost" data-act="download" data-pid="${pid}">${ui().icon('download', 15)} 下载稿</button>
         <button class="btn btn-ghost" data-act="ai-deep" data-pid="${pid}">${ui().icon('bot', 15)} AI 深度改写</button>
         <span style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${ui().icon('checkCircle', 13)} ${r.changes.length} 处针对性调整</span>
       </div>`;
@@ -189,6 +190,7 @@ window.CP = window.CP || {};
     });
     right.querySelector('[data-act="publish"]').addEventListener('click', (e) => doPublish(root, e.target.closest('[data-act="publish"]').dataset.pid));
     right.querySelector('[data-act="copy"]').addEventListener('click', (e) => copyRewrite(e.target.closest('[data-act="copy"]').dataset.pid));
+    right.querySelector('[data-act="download"]').addEventListener('click', (e) => downloadRewrite(e.target.closest('[data-act="download"]').dataset.pid));
     right.querySelector('[data-act="ai-deep"]').addEventListener('click', (e) => aiDeep(root, e.target.closest('[data-act="ai-deep"]').dataset.pid));
   }
 
@@ -352,6 +354,16 @@ window.CP = window.CP || {};
     } else {
       ui().toast('已生成改写稿', 'info');
     }
+  }
+
+  /* ---------- 下载改写稿（Markdown 文件） ---------- */
+  function downloadRewrite(pid) {
+    const r = S().ui.rewriteResults[pid];
+    if (!r) return;
+    const md = `# ${r.title}\n\n${r.body}\n`;
+    const safe = String(r.title).replace(/[\\/:*?"<>|\n]/g, '').slice(0, 30) || 'copy';
+    ui().downloadFile(`ContentPort-${safe}.md`, md, 'text/markdown');
+    ui().toast('已下载 Markdown 改写稿', 'ok');
   }
 
   /* ---------- AI 深度改写 ---------- */

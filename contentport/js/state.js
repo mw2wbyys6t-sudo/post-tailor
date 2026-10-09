@@ -73,6 +73,15 @@ window.CP = window.CP || {};
       if (a) Object.assign(a, patch);
       save(LS.articles, state.articles);
     },
+    /* 按给定顺序重排文章库（拖拽排序用，未提及的文章保持相对顺序在后） */
+    reorderArticles(orderedIds) {
+      const map = {};
+      state.articles.forEach(a => { map[a.id] = a; });
+      const head = orderedIds.map(id => map[id]).filter(Boolean);
+      const rest = state.articles.filter(a => !orderedIds.includes(a.id));
+      state.articles = [...head, ...rest];
+      save(LS.articles, state.articles);
+    },
     getHistory: () => state.history,
     addHistory(rec) {
       state.history.unshift(rec);

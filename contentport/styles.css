@@ -209,6 +209,12 @@ input, select, textarea { font-family: inherit; color: var(--ink); }
 .tag-product { background: rgba(18, 138, 98, 0.12); color: #0C6E4E; }
 .tag-business { background: rgba(90, 70, 190, 0.1); color: #5B45BE; }
 .tag-default { background: var(--surface-3); color: var(--ink-2); }
+.tag-tag { background: rgba(15, 118, 110, 0.1); color: #0F766E; }
+
+/* 文章库拖拽排序 */
+.article-card { cursor: grab; }
+.article-card:active { cursor: grabbing; }
+.article-card.dragging { opacity: 0.5; transform: scale(0.98); box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.12)); }
 
 .badge {
   display: inline-flex; align-items: center; gap: 5px;

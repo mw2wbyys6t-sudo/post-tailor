@@ -153,17 +153,24 @@ ${article.body}
     },
 
     /* --------------------------------------------------------
-       GET /api/articles?query=&category=&status=
+       GET /api/articles?query=&category=&status=&tag=
+       category 可传数组（多选分类）；tag 为单个标签
        -------------------------------------------------------- */
     async fetchArticles(filter = {}) {
       await delay(300);
       let list = [...S().articles];
       if (filter.query) {
         const q = filter.query.toLowerCase();
-        list = list.filter(a => (a.title + a.summary + a.category).toLowerCase().includes(q));
+        list = list.filter(a => (a.title + a.summary + a.category + (a.tags || []).join(' ')).toLowerCase().includes(q));
       }
-      if (filter.category && filter.category !== '全部') {
-        list = list.filter(a => a.category === filter.category);
+      const cats = Array.isArray(filter.categories)
+        ? filter.categories
+        : (filter.category && filter.category !== '全部' ? [filter.category] : []);
+      if (cats.length) {
+        list = list.filter(a => cats.includes(a.category));
+      }
+      if (filter.tag && filter.tag !== '全部') {
+        list = list.filter(a => (a.tags || []).includes(filter.tag));
       }
       if (filter.status && filter.status !== '全部') {
         list = list.filter(a => a.status === filter.status);
@@ -173,9 +180,9 @@ ${article.body}
 
     /* --------------------------------------------------------
        POST /api/articles  —— 新建文章
-       body: { title, category, body }
+       body: { title, category, body, tags? }
        -------------------------------------------------------- */
-    async createArticle({ title, category, body }) {
+    async createArticle({ title, category, body, tags }) {
       await delay(400);
       const wordCount = (body || '').replace(/\s/g, '').length;
       const article = {
@@ -183,6 +190,7 @@ ${article.body}
         title,
         summary: (body || '').slice(0, 60) + '……',
         category: category || '技术干货',
+        tags: Array.isArray(tags) ? tags.slice(0, 5) : [],
         wordCount: Math.max(wordCount, 300),
         status: '草稿',
         source: '本地导入',
@@ -441,7 +449,10 @@ ${article.body}
 
       // 复制稿模式
       rec.status = autoPublish ? '已发布' : '复制稿已生成';
-      if (!autoPublish) rec.link = '';
+      if (!autoPublish) {
+        rec.link = '';
+        rec.copyContent = { title, body }; // 复制稿导出用
+      }
       CP.actions.addHistory(rec);
       return { code: 0, data: { rec, mode: autoPublish ? 'auto' : 'copy', pendingReal, platformName: platform.name } };
     },
@@ -472,6 +483,16 @@ ${article.body}
        POST /api/stats/pull-all  —— 批量回拉所有可回拉的发布记录
        供「回拉全部数据」按钮与自动定时回拉共用
        -------------------------------------------------------- */
+    /* 把本次回拉结果追加为一条趋势快照（保留最近 20 个点） */
+    snapshotSeries(h, d) {
+      const t = new Date().toLocaleString('zh-CN', {
+        month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+      });
+      const series = Array.isArray(h.series) ? h.series.slice(-19) : [];
+      series.push({ t, views: Number(d.views) || 0, likes: Number(d.likes) || 0, comments: Number(d.comments) || 0 });
+      return series;
+    },
+
     async pullAllStats() {
       const targets = S().history.filter(h => (h.postId || h.publishId) && h.platformId !== 'xhs');
       let updated = 0, fail = 0, firstFail = '';
@@ -483,6 +504,7 @@ ${article.body}
             views: Number(d.views) || 0,
             likes: Number(d.likes) || 0,
             comments: Number(d.comments) || 0,
+            series: this.snapshotSeries(h, d),
             lastSync: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
           };
           if (d.status) patch.remoteStatus = d.status;
