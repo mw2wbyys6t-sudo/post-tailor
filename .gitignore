@@ -1,0 +1,15 @@
+# 依赖
+node_modules/
+
+# 构建与打包中间产物（保留最终安装包）
+release/*.log
+release/*.yml
+release/linux-unpacked/
+release/win-unpacked/
+release/mac/
+release/.icon-ico/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.log
