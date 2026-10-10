@@ -1,7 +1,7 @@
 {
   "name": "contentport",
   "productName": "ContentPort",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "文章多平台分发 + 受众自适应优化 —— 不是搬运，是让文章像平台原生内容",
   "main": "electron/main.js",
   "author": "ContentPort",

@@ -256,7 +256,7 @@ window.CP = window.CP || {};
     const acc = accountOf(pid);
     // 已接入真实发布通道且凭据完整 → 自动发布；否则复制稿
     const realSupport = (window.CP.REAL_PLATFORM_IDS || []).includes(pid);
-    const isXhs = pid === 'xhs'; // 小红书为浏览器辅助发布
+    const isXhs = pid === 'xhs'; // 小红书为浏览器全自动发布（复用登录 session 自动操作官方发布页）
     const autoMode = !!(acc && realSupport && credOkOf(pid, acc));
     const pendingMode = !!(acc && realSupport && !credOkOf(pid, acc));
 
@@ -276,7 +276,7 @@ window.CP = window.CP || {};
         </div>
         <div class="fact" style="margin-bottom:10px">
           <div class="f-l">发布模式</div>
-          <div class="f-v" style="font-weight:600">${autoMode ? (isXhs ? '浏览器辅助发布（打开官方发布页确认）' : '自动发布（以你的账号直接发布）') : (pendingMode ? '凭据不完整，请到账号中心重新登录' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
+          <div class="f-v" style="font-weight:600">${autoMode ? (isXhs ? '浏览器全自动发布（自动填写并提交，失败时回到发布页手动确认）' : '自动发布（以你的账号直接发布）') : (pendingMode ? '凭据不完整，请到账号中心重新登录' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
         </div>
         <div class="fact" style="margin-bottom:10px">
           <div class="f-l">发布时间</div>
@@ -292,7 +292,7 @@ window.CP = window.CP || {};
         </div>
         <div class="hint">${autoMode
           ? (isXhs
-            ? `系统将打开小红书官方发布页，自动填入标题、正文复制到剪贴板，请在页面中粘贴正文并确认发布。`
+            ? `系统将自动打开小红书官方发布页，自动填入标题与正文并点击发布；若平台拦截或改版，将回到发布页由你手动确认。`
             : `系统将以 ${ui().esc(acc.nickname)} 的身份调用 ${p.name} 发布接口。`)
           : (pendingMode
             ? `已绑定账号但凭据不完整，请到「账号中心」重新登录 ${p.name} 后自动发布。`
@@ -388,7 +388,7 @@ window.CP = window.CP || {};
     btn.innerHTML = ui().icon('check', 15) + ' 完成';
     modal.closest('.modal-wrap').querySelector('[data-close]').click();
     if (res.data.openedPage) {
-      ui().toast(`已打开${res.data.platformName}发布页：标题已填入（若失败请粘贴），正文已复制，请在页面确认发布`, 'info');
+      ui().toast(`已回到 ${res.data.platformName} 发布页：${(res.data.note || '请在页面确认发布')}`, 'info');
     } else if (res.data.mode === 'auto') {
       ui().toast(`已通过 ${ui().esc(acc ? acc.nickname : '你的账号')} 发布到 ${res.data.platformName}`, 'ok');
     } else if (res.data.pendingReal) {
