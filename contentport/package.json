@@ -1,14 +1,14 @@
 {
   "name": "contentport",
   "productName": "ContentPort",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "文章多平台分发 + 受众自适应优化 —— 不是搬运，是让文章像平台原生内容",
   "main": "electron/main.js",
   "author": "ContentPort",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/contentport/contentport.git"
+    "url": "https://github.com/mw2wbyys6t-sudo/post-tailor.git"
   },
   "scripts": {
     "start": "electron .",
@@ -43,22 +43,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        { "target": "zip", "arch": ["x64"] }
       ],
-      "artifactName": "ContentPort-Setup-${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "shortcutName": "ContentPort 内容港"
+      "artifactName": "ContentPort-Win-x64-${version}.zip",
+      "signAndEditExecutable": false
     },
     "mac": {
       "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
       "category": "public.app-category.productivity"
     },
     "linux": {
-      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "target": [{ "target": "zip", "arch": ["x64"] }],
+      "artifactName": "ContentPort-Linux-x64-${version}.zip",
       "category": "Office"
     }
   }
