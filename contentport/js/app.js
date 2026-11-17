@@ -270,7 +270,7 @@ window.CP = window.CP || {};
       CP.actions.updateScheduled(t.id, { status: 'publishing' });
       let res;
       try {
-        res = await CP.api.publish({ articleId: t.articleId, platformId: t.platformId, title: t.title, body: t.body });
+        res = await CP.api.publish({ articleId: t.articleId, platformId: t.platformId, title: t.title, body: t.body, score: t.score, algorithm: t.algorithm });
       } catch (e) {
         res = { code: 1, msg: e.message || '发布失败' };
       }

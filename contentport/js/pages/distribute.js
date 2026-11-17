@@ -126,15 +126,18 @@ window.CP = window.CP || {};
     const pid = activePid || tabOrder[0];
     const r = results[pid];
     const p = M().PLATFORMS.find(x => x.id === pid);
+    const scoreOf = (res) => (res.quality ? res.quality.total : res.score);
+    const score = scoreOf(r);
 
     right.innerHTML = `
       <div class="compare-head">
         <div class="compare-tabs" id="d-tabs">
           ${tabOrder.map(id => {
             const pp = M().PLATFORMS.find(x => x.id === id);
+            const s = scoreOf(results[id]);
             return `<div class="compare-tab ${id === pid ? 'active' : ''}" data-pid="${id}">
               <span class="plat-dot" style="background:${pp.color}"></span>${pp.name}
-              <span class="badge" style="background:${results[id].score >= 90 ? 'var(--ok-soft)' : 'var(--amber-soft)'};color:${results[id].score >= 90 ? 'var(--ok)' : 'var(--amber)'};padding:1px 7px">${results[id].score}</span>
+              <span class="badge" style="background:${s >= 90 ? 'var(--ok-soft)' : 'var(--amber-soft)'};color:${s >= 90 ? 'var(--ok)' : 'var(--amber)'};padding:1px 7px">${s}</span>
             </div>`;
           }).join('')}
         </div>
@@ -145,21 +148,23 @@ window.CP = window.CP || {};
           <svg width="72" height="72">
             <circle cx="36" cy="36" r="31" fill="none" stroke="var(--surface-3)" stroke-width="7"/>
             <circle cx="36" cy="36" r="31" fill="none" stroke="${p.color}" stroke-width="7"
-              stroke-linecap="round" stroke-dasharray="${r.score / 100 * 195} 195"/>
+              stroke-linecap="round" stroke-dasharray="${score / 100 * 195} 195"/>
           </svg>
-          <div class="sr-num">${r.score}</div>
+          <div class="sr-num">${score}</div>
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-size:15px;font-weight:700;font-family:var(--font-display);line-height:1.5">${ui().esc(r.title)}</div>
           <div style="font-size:12px;color:var(--ink-3);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap">
             <span>${ui().icon('target', 12)} 适配「${r.fitted}」</span>
             <span>${ui().icon('hash', 12)} ${r.keywords.map(k => '#' + k).join(' ')}</span>
-            ${r.aiGenerated ? `<span class="badge" style="background:var(--primary-soft);color:var(--primary)">${ui().icon('bot', 11)} AI 生成</span>` : `<span class="badge badge-gray">${ui().icon('gauge', 11)} 规则引擎</span>`}
+            ${r.aiGenerated ? `<span class="badge" style="background:var(--primary-soft);color:var(--primary)">${ui().icon('bot', 11)} AI 生成</span>` : `<span class="badge badge-gray">${ui().icon('gauge', 11)} 本地引擎</span>`}
           </div>
         </div>
       </div>
 
       <div class="rewrite-body">${ui().renderMd(r.body)}</div>
+
+      ${r.quality ? renderQuality(r.quality) : ''}
 
       <div style="border-top:1px solid var(--border);padding:14px 20px">
         <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('sparkles', 14)} 改写调整清单</div>
@@ -248,6 +253,41 @@ window.CP = window.CP || {};
       : false;
   }
 
+  const Q_DIMS = [
+    ['C', '信息保留'], ['S', '结构合规'], ['L', '长度'], ['T', '标题'],
+    ['O', '原创度'], ['R', '可读性'], ['M', '平台合规']
+  ];
+
+  function renderQuality(q) {
+    const color = (v) => v >= 85 ? 'var(--ok)' : (v >= 65 ? 'var(--amber)' : 'var(--danger)');
+    return `
+      <div class="quality-block">
+        <div class="q-head">
+          <span>${ui().icon('gauge', 14)} 平台质检</span>
+          <span class="q-note">代理指标，不代表平台流量</span>
+        </div>
+        <div class="q-dims">
+          ${Q_DIMS.map(([k, label]) => {
+            const v = q.dims[k] || 0;
+            return `<div class="q-dim">
+              <span class="q-label">${label}</span>
+              <span class="q-bar"><i style="width:${v}%;background:${color(v)}"></i></span>
+              <b style="color:${color(v)}">${v}</b>
+            </div>`;
+          }).join('')}
+        </div>
+        ${q.issues && q.issues.length ? `
+          <div class="q-issues">
+            ${q.issues.slice(0, 3).map(i => `
+              <div class="q-issue ${i.level === 'P0' ? 'p0' : ''}">
+                <span>${ui().esc(i.msg)}</span>
+                <em>${ui().esc(i.fix)}</em>
+              </div>`).join('')}
+          </div>` : ''}
+      </div>`;
+  }
+
+
   async function doPublish(root, pid) {
     const articleId = S().ui.activeArticleId;
     const r = S().ui.rewriteResults[pid];
@@ -263,7 +303,7 @@ window.CP = window.CP || {};
     ui().openModal(`
       <div class="modal-head">
         <h3>发布到 ${p.name}</h3>
-        <p>「${ui().esc(r.title)}」将发布到 ${p.name}，适配度评分 ${r.score}。</p>
+        <p>「${ui().esc(r.title)}」将发布到 ${p.name}，质检分 ${r.quality ? r.quality.total : r.score}（代理指标）。</p>
       </div>
       <div class="modal-body">
         <div class="fact" style="margin-bottom:10px">
@@ -364,7 +404,9 @@ window.CP = window.CP || {};
     const res = await CP.api.publish({
       articleId, platformId: pid, title: r.title, body: r.body,
       accountNickname: acc ? acc.nickname : '',
-      scheduledAt: schedVal
+      scheduledAt: schedVal,
+      score: r.quality ? r.quality.total : r.score,
+      algorithm: r.algorithm ? { ...r.algorithm, quality: r.quality ? r.quality.dims : null } : null
     });
     btn.innerHTML = ui().icon('check', 15) + ' 完成';
     modal.closest('.modal-wrap').querySelector('[data-close]').click();
@@ -383,7 +425,9 @@ window.CP = window.CP || {};
     btn.innerHTML = ui().icon('refresh', 15) + ' 发布中…';
     const res = await CP.api.publish({
       articleId, platformId: pid, title: r.title, body: r.body,
-      accountNickname: acc ? acc.nickname : ''
+      accountNickname: acc ? acc.nickname : '',
+      score: r.quality ? r.quality.total : r.score,
+      algorithm: r.algorithm ? { ...r.algorithm, quality: r.quality ? r.quality.dims : null } : null
     });
     btn.innerHTML = ui().icon('check', 15) + ' 完成';
     modal.closest('.modal-wrap').querySelector('[data-close]').click();

@@ -514,12 +514,46 @@ input, select, textarea { font-family: inherit; color: var(--ink); }
 .change-item .ci-to { font-size: 12.5px; color: var(--ink); font-weight: 600; margin-bottom: 6px; }
 .change-item .ci-reason { font-size: 11.5px; color: var(--amber); display: flex; gap: 6px; align-items: flex-start; }
 
-.score-ring { position: relative; width: 72px; height: 72px; flex: none; }
+.score-ring {
+  position: relative; width: 72px; height: 72px; flex: none;
+}
 .score-ring svg { transform: rotate(-90deg); }
 .score-ring .sr-num {
   position: absolute; inset: 0; display: grid; place-items: center;
   font-family: var(--font-display); font-size: 19px; font-weight: 700;
 }
+
+/* ============ 平台质检 ============ */
+.quality-block {
+  border-top: 1px solid var(--border);
+  padding: 16px 20px;
+  background: var(--surface-2);
+}
+.q-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 12px;
+}
+.q-head > span:first-child { display: inline-flex; align-items: center; gap: 7px; }
+.q-note { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.q-dims {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 24px;
+}
+.q-dim { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); }
+.q-label { width: 58px; flex: none; }
+.q-bar { flex: 1; height: 6px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.q-bar i { display: block; height: 100%; border-radius: 4px; transition: width var(--transition); }
+.q-dim b { width: 26px; text-align: right; font-size: 11.5px; }
+.q-issues { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.q-issue {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline;
+  font-size: 11.5px; color: var(--ink-2);
+  background: var(--amber-soft); border-radius: 8px; padding: 7px 10px;
+}
+.q-issue em { color: var(--amber); font-style: normal; }
+.q-issue.p0 { background: var(--danger-soft); }
+.q-issue.p0 em { color: var(--danger); }
 .rewrite-toolbar {
   display: flex; align-items: center; gap: 10px; padding: 14px 20px;
   border-top: 1px solid var(--border); background: var(--surface-2);

@@ -1,0 +1,7 @@
+{
+  "id": "case-monitoring",
+  "label": "Prometheus 监控体系",
+  "category": "技术干货",
+  "title": "从零搭建团队监控体系：Prometheus + Grafana 实践",
+  "body": "## 为什么需要监控体系\n服务上云之后，故障定位从「登录服务器看日志」变成了大海捞针。可观测性的三个支柱：指标、日志、链路，缺一不可。\n\n## 指标采集层\nPrometheus 采用 Pull 模式，配合 Node Exporter 与自定义 Exporter 采集业务指标。重点是规划好指标命名规范与标签设计，避免高基数标签拖垮存储。\n\n## 告警规则设计\n告警不是越多越好。我们按「可用性 > 延迟 > 错误率 > 饱和度」四类黄金信号配置，配合 Alertmanager 路由到 IM。\n\n## 可视化看板\nGrafana 提供 JSON 化看板，配合模板变量实现多环境切换，一个面板家族复用到所有服务。"
+}

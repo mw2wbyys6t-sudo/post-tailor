@@ -74,65 +74,6 @@ window.CP = window.CP || {};
 
   const clamp = (n, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Number(n) || 0));
 
-  /* ========================================================
-     受众自适应改写（AI 优先，规则引擎兜底）
-     ======================================================== */
-  async function aiRewrite(article, pid) {
-    const plat = M().PLATFORMS.find(p => p.id === pid);
-    const portrait = S().portrait || {};
-
-    const system = `你是资深的多平台内容运营与写作专家，精通${M().PLATFORMS.map(p => p.name).join('、')}等平台的读者心理、内容偏好与爆款方法论。你的任务是把同一篇文章改写为该平台"原生感"版本——不是简单搬运，而是让读者以为内容就是为这个平台写的。
-
-要求：
-1. 严格遵守目标平台画像（受众、语气、字数、标题策略、风格规则）；
-2. 结合用户画像（作者定位、领域、目标读者）做取舍；
-3. 输出必须是合法 JSON，不要输出任何解释文字；
-4. JSON 结构固定如下：
-{
-  "title": "改写后的标题",
-  "body": "改写后的正文（markdown：## 分节、- 列表、> 引用、**加粗**，段落间空行）",
-  "changes": [{"dim":"标题/开头/结构/语气/字数","from":"原文对应","to":"改写后","reason":"依据平台画像的原因"}],
-  "score": 0-100 之间的适配度整数,
-  "keywords": ["2-4 个平台热门标签关键词"],
-  "fitted": "一条该平台受众阅读习惯（直接取自画像 habits 中的一条）"
-}`;
-
-    const user = `【平台画像】
-${JSON.stringify({ name: plat.name, tagline: plat.tagline, audience: plat.audience, trending: plat.trending, styleRules: plat.styleRules }, null, 2)}
-
-【用户画像】
-${JSON.stringify(portrait, null, 2)}
-
-【原文】
-标题：${article.title}
-分类：${article.category}
-字数：${article.wordCount}
-${article.body}
-
-请输出该文章在「${plat.name}」的完整改写方案 JSON。`;
-
-    const content = await aiChat([
-      { role: 'system', content: system },
-      { role: 'user', content: user }
-    ], { json: true, temperature: 0.75, maxTokens: 5000 });
-
-    const parsed = parseJsonLoose(content);
-    const fallback = CP.genRewrite(article, pid);
-
-    return {
-      platformId: pid,
-      platformName: plat.name,
-      platformColor: plat.color,
-      title: (parsed.title || fallback.title).slice(0, 80),
-      body: parsed.body || fallback.body,
-      changes: Array.isArray(parsed.changes) && parsed.changes.length ? parsed.changes : fallback.changes,
-      score: clamp(parsed.score, 0, 100) || fallback.score,
-      keywords: Array.isArray(parsed.keywords) && parsed.keywords.length ? parsed.keywords.slice(0, 4) : fallback.keywords,
-      fitted: parsed.fitted || fallback.fitted,
-      aiGenerated: true
-    };
-  }
-
   const api = {
     /* --------------------------------------------------------
        GET /api/portrait  —— 获取用户画像（问答结果）
@@ -228,49 +169,33 @@ ${article.body}
     },
 
     /* --------------------------------------------------------
-       POST /api/rewrite  —— 受众自适应改写
+       POST /api/rewrite  —— 平台自适应改写
        body: { articleId, platformIds }
-       配置 AI 后走真实大模型；否则规则引擎
+       走 engine/pipeline：内容分析 → 平台规划 →（AI 计划/成稿/
+       质检修复）→ 本地质检；无 AI 时确定性成稿兜底
        -------------------------------------------------------- */
     async rewriteArticle(articleId, platformIds) {
       const article = CP.actions.getArticle(articleId);
       if (!article) return { code: 1, msg: '文章不存在' };
 
       const aiReady = !!(S().settings.ai.apiKey && S().settings.ai.baseUrl);
+      const pipeline = CP.engine && CP.engine.pipeline;
       const results = {};
       const errors = {};
 
-      // 并行改写各平台，任一失败自动回退规则引擎
       await Promise.all(platformIds.map(async (pid) => {
-        const fallback = () => {
-          const sample = M().REWRITE_SAMPLES[pid];
-          if (articleId === 'a1' && sample) {
-            const plat = M().PLATFORMS.find(p => p.id === pid);
-            const engine = CP.genRewrite(article, pid);
-            return {
-              platformId: pid,
-              platformName: plat.name,
-              platformColor: plat.color,
-              title: sample.title,
-              body: sample.body,
-              changes: engine.changes,
-              score: { csdn: 92, wechat: 90, xhs: 87, zhihu: 91 }[pid] || 88,
-              keywords: [article.keyword || article.category, ...plat.trending.slice(0, 2)],
-              fitted: plat.audience.habits[0]
-            };
-          }
-          return CP.genRewrite(article, pid);
-        };
-
-        if (aiReady) {
+        if (pipeline && typeof pipeline.run === 'function') {
           try {
-            results[pid] = await aiRewrite(article, pid);
+            results[pid] = await pipeline.run(article, pid, {
+              aiChat: aiReady ? aiChat : null,
+              portrait: S().portrait || {}
+            });
             return;
           } catch (e) {
-            errors[pid] = e.message;
+            errors[pid] = e.message || '改写失败';
           }
         }
-        results[pid] = fallback();
+        results[pid] = CP.genRewrite(article, pid);
       }));
 
       return { code: 0, data: results, ai: aiReady, errors };
@@ -385,7 +310,7 @@ ${article.body}
        POST /api/publish  —— 发布文章到平台
        实际模式：接平台开放 API 自动发布；未接入时生成复制稿
        -------------------------------------------------------- */
-    async publish({ articleId, platformId, title, body, accountNickname = '', scheduledAt }) {
+    async publish({ articleId, platformId, title, body, accountNickname = '', scheduledAt, score = null, algorithm = null }) {
       await delay(1500);
       const article = CP.actions.getArticle(articleId);
       const platform = M().PLATFORMS.find(p => p.id === platformId);
@@ -394,7 +319,7 @@ ${article.body}
       if (scheduledAt) {
         const t = new Date(scheduledAt).getTime();
         if (t > Date.now()) {
-          CP.actions.addScheduled({ articleId, platformId, title, body, scheduledAt });
+          CP.actions.addScheduled({ articleId, platformId, title, body, scheduledAt, score, algorithm });
           return { code: 0, data: { mode: 'scheduled', platformName: platform.name }, msg: '已加入定时发布队列' };
         }
       }
@@ -421,8 +346,9 @@ ${article.body}
         link: '',
         views: 0,
         likes: 0,
-        score: 80 + Math.round(Math.random() * 15)
+        score: score != null ? score : 80 + Math.round(Math.random() * 15)
       };
+      if (algorithm) rec.algorithm = algorithm;
 
       // 真实发布通道（Electron + 已登录账号）
       const electron = window.electronAPI;
