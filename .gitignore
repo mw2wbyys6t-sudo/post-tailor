@@ -18,5 +18,6 @@ Thumbs.db
 
 # 开发过程产物（本地计划文档 / 评测基线 / 真实回拉数据）
 .trae/
+.uploads/
 contentport/eval/baseline.json
 contentport/eval/history.json
