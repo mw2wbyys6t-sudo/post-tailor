@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · CSDN 发布通道（electron/platform/csdn.js）
+   OmniDraft · CSDN 发布通道（electron/platform/csdn.js）
    CSDN 无官方公开 REST API，官方支持的协议为 MetaWeblog
    （XML-RPC）：https://write.blog.csdn.net/xmlrpc/index
    该通道与 Word / Open Live Writer 发布 CSDN 的方式相同。

@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 账号中心（accounts.js）
+   OmniDraft · 账号中心（accounts.js）
    登录 / 绑定 / 解绑平台账号
    登录方式：① 开放平台 API 凭据（AppID/AppSecret/Token）
             ② 浏览器 Cookie（Electron 内打开平台登录页扫码捕获）

@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 发布记录（history.js）
+   OmniDraft · 发布记录（history.js）
    发布历史表格：状态筛选 / 搜索 / 互动数据
    ========================================================= */
 window.CP = window.CP || {};
@@ -44,7 +44,7 @@ window.CP = window.CP || {};
     root.querySelector('[data-act="pull-all"]').addEventListener('click', pullAll);
     root.querySelector('[data-act="export-all"]').addEventListener('click', () => {
       const stamp = new Date().toISOString().slice(0, 10);
-      ui().downloadFile(`ContentPort-backup-${stamp}.json`, CP.actions.exportAll(), 'application/json');
+      ui().downloadFile(`OmniDraft-backup-${stamp}.json`, CP.actions.exportAll(), 'application/json');
       ui().toast('已导出全量备份（不含密钥）', 'ok');
     });
     root.querySelector('#h-q').addEventListener('input', () => renderTable(root));
@@ -237,7 +237,7 @@ window.CP = window.CP || {};
     const title = h.copyContent.title || (a && a.title) || '未命名文章';
     const md = `# ${title}\n\n${h.copyContent.body || (a && a.body) || ''}\n`;
     const safeName = String(title).replace(/[\\/:*?"<>|\n]/g, '').slice(0, 30) || 'copy';
-    ui().downloadFile(`ContentPort-${safeName}.md`, md, 'text/markdown');
+    ui().downloadFile(`OmniDraft-${safeName}.md`, md, 'text/markdown');
     ui().toast('复制稿已导出为 Markdown 文件', 'ok');
   }
 

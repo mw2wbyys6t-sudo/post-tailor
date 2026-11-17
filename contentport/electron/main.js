@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · Electron 主进程（main.js）
+   OmniDraft · Electron 主进程（main.js）
    - 创建桌面窗口并加载前端
    - ipcMain 代理 AI 请求（绕过浏览器 CORS，Key 不出本机）
    ========================================================= */
@@ -9,13 +9,18 @@ const fs = require('fs');
 
 const isDev = !app.isPackaged;
 
+/* 品牌改名后仍沿用原数据目录，避免用户已有的文章 / 发布记录 / 登录态丢失 */
+try {
+  app.setPath('userData', path.join(app.getPath('appData'), 'ContentPort'));
+} catch (_) { /* 路径不可写时使用默认目录 */ }
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
     height: 920,
     minWidth: 1100,
     minHeight: 700,
-    title: 'ContentPort · 内容港',
+    title: 'OmniDraft · 一稿千面',
     backgroundColor: '#F5F2EB',
     autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),

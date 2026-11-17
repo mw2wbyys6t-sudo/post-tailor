@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 本地质检器（engine/quality.js）
+   OmniDraft · 本地质检器（engine/quality.js）
    输出：{ total, dims:{C,S,L,T,O,R,M}, metrics, issues }
    C 信息保留 / S 结构合规 / L 长度 / T 标题 / O 原创度 /
    R 可读性 / M 合规；所有扣分都能定位到具体维度与原因。

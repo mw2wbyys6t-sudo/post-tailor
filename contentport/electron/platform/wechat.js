@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 微信公众号发布通道（electron/platform/wechat.js）
+   OmniDraft · 微信公众号发布通道（electron/platform/wechat.js）
    官方开放平台 API：
    1. stable_token      POST /cgi-bin/stable_token         AppID+Secret → token
    2. 上传封面图        POST /cgi-bin/media/uploadimg      获取封面图片 URL

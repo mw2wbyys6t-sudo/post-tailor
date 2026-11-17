@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 分发工作台（distribute.js）
+   OmniDraft · 分发工作台（distribute.js）
    选文章 → 选平台 → 受众自适应改写 → 对照预览 → 发布/复制
    ========================================================= */
 window.CP = window.CP || {};
@@ -534,7 +534,7 @@ window.CP = window.CP || {};
     if (!r) return;
     const md = `# ${r.title}\n\n${r.body}\n`;
     const safe = String(r.title).replace(/[\\/:*?"<>|\n]/g, '').slice(0, 30) || 'copy';
-    ui().downloadFile(`ContentPort-${safe}.md`, md, 'text/markdown');
+    ui().downloadFile(`OmniDraft-${safe}.md`, md, 'text/markdown');
     ui().toast('已下载 Markdown 改写稿', 'ok');
   }
 

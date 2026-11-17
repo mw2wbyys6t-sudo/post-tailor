@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 改写流水线（engine/pipeline.js）
+   OmniDraft · 改写流水线（engine/pipeline.js）
    编排：analysis → plan → （AI 计划 → AI 成稿 → 本地质检 →
    按问题单修复一次）→ 兼容旧字段的结果
    无 AI / AI 失败：writer 确定性成稿兜底

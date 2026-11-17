@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 小红书发布通道（electron/platform/xhs.js）
+   OmniDraft · 小红书发布通道（electron/platform/xhs.js）
    说明：小红书没有对第三方开放的文章发布 API，创作者平台
    内部接口（edith.xiaohongshu.com）需要前端 JS 生成的
    x-s 签名，逆向极易失效。

@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 知乎发布通道（electron/platform/zhihu.js）
+   OmniDraft · 知乎发布通道（electron/platform/zhihu.js）
    知乎无公开第三方发布 API，网页端「写文章」走内部接口：
      GET  /api/v4/me             校验登录态（Cookie）
      POST /api/v4/me/articles    发布文章（Cookie + _xsrf）

@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 离线成稿器（engine/writer.js）
+   OmniDraft · 离线成稿器（engine/writer.js）
    输入：analysis + plan + 平台策略
    输出：{ title, body }
    规则：只抽取/压缩原文事实，不新增论据；按平台结构重组，

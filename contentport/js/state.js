@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 状态层（state.js）
+   OmniDraft · 状态层（state.js）
    集中管理：用户画像 / 文章库 / 发布记录 / 当前选择 / UI 状态
    持久化：localStorage（刷新不丢失）
    ========================================================= */
@@ -179,7 +179,7 @@ window.CP = window.CP || {};
     exportAll() {
       const s = state.settings || {};
       return JSON.stringify({
-        app: 'ContentPort',
+        app: 'OmniDraft',
         format: 1,
         exportedAt: new Date().toISOString(),
         note: '备份不包含 AI API Key 与平台凭据，恢复后需重新填写',
@@ -204,7 +204,9 @@ window.CP = window.CP || {};
     importAll(json) {
       let obj;
       try { obj = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { throw new Error('备份文件不是合法 JSON'); }
-      if (!obj || obj.app !== 'ContentPort' || !obj.data) throw new Error('不是 ContentPort 的备份文件');
+      if (!obj || (obj.app !== 'OmniDraft' && obj.app !== 'ContentPort') || !obj.data) {
+        throw new Error('不是 OmniDraft 的备份文件');
+      }
       const d = obj.data;
       if (!Array.isArray(d.articles) || !Array.isArray(d.history)) throw new Error('备份缺少文章或发布记录');
       state.portrait = d.portrait || null;

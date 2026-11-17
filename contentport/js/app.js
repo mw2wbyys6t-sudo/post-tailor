@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 应用外壳 + 路由（app.js）
+   OmniDraft · 应用外壳 + 路由（app.js）
    冻结的 App Shell：侧边栏 + 顶栏 + 内容槽（SPA，一次性注入）
    ========================================================= */
 window.CP = window.CP || {};
@@ -32,8 +32,8 @@ window.CP = window.CP || {};
           <div class="brand">
             <div class="brand-logo">${ui().icon('send', 19)}</div>
             <div>
-              <div class="brand-name">ContentPort</div>
-              <div class="brand-sub">内 容 港 · 分 发</div>
+              <div class="brand-name">OmniDraft</div>
+              <div class="brand-sub">一 稿 千 面 · 多 端 分 发</div>
             </div>
           </div>
           <nav class="nav">
@@ -228,7 +228,7 @@ window.CP = window.CP || {};
     /* 数据备份 / 恢复 */
     modal.querySelector('#set-export').addEventListener('click', () => {
       const stamp = new Date().toISOString().slice(0, 10);
-      ui().downloadFile(`ContentPort-backup-${stamp}.json`, CP.actions.exportAll(), 'application/json');
+      ui().downloadFile(`OmniDraft-backup-${stamp}.json`, CP.actions.exportAll(), 'application/json');
       ui().toast('备份已导出（不含密钥）', 'ok');
     });
     const importFile = modal.querySelector('#set-import-file');

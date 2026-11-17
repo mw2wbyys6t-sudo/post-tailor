@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 预加载脚本（preload.js）
+   OmniDraft · 预加载脚本（preload.js）
    通过 contextBridge 安全暴露 IPC 能力给渲染进程
    ========================================================= */
 const { contextBridge, ipcRenderer } = require('electron');

@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 平台策略库（engine/strategies.js）
+   OmniDraft · 平台策略库（engine/strategies.js）
    把「爆款」拆成可编码规则：标题公式 / 钩子原型 / 结构模板 /
    长度预算 / 排版规则 / CTA / 标签策略 / 平台禁忌 / 质检权重
    平台受众数据优先继承 js/mock.js 的 PLATFORMS，缺失时用内置兜底

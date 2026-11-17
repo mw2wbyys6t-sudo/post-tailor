@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 改写规划器（engine/planner.js）
+   OmniDraft · 改写规划器（engine/planner.js）
    输入：analysis + 平台策略
    输出：钩子 / 结构 / 标题公式 / 长度预算 / 章节映射 /
          mustKeep / tags / brief（AI 与离线成稿共用同一份 plan）

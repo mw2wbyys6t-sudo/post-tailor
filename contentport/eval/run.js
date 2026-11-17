@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 评测 CLI（eval/run.js）
+   OmniDraft · 评测 CLI（eval/run.js）
    零依赖：node eval/run.js [--engine=old|new|both] [--platforms=...]
                            [--ai] [--json] [--fail-under=85]
                            [--save-baseline]

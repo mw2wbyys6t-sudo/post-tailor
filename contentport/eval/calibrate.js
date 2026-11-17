@@ -1,5 +1,5 @@
 /* =========================================================
-   ContentPort · 真实数据校准（eval/calibrate.js）
+   OmniDraft · 真实数据校准（eval/calibrate.js）
    读取发布记录导出（history JSON），按平台计算：
    质检分 vs log(阅读+1)、点赞率的 Spearman 相关性
    规则：n < 30 不结论；只给建议，不自动改权重
