@@ -12,7 +12,8 @@ window.CP = window.CP || {};
     history: 'cp.history.v1',
     settings: 'cp.settings.v1',
     sniffDone: 'cp.sniffDone.v1',
-    scheduled: 'cp.scheduled.v1'
+    scheduled: 'cp.scheduled.v1',
+    rewrites: 'cp.rewrites.v1'
   };
 
   function load(key, fallback) {
@@ -40,20 +41,27 @@ window.CP = window.CP || {};
     }),
     sniffDone: load(LS.sniffDone, false),         // 是否完成过嗅探
     scheduledPublishes: load(LS.scheduled, []),   // 定时发布任务队列
+    rewrites: load(LS.rewrites, {}),              // 改写稿持久化 { articleId: { platformId: result } }
     /* ---- 会话内 UI 状态 ---- */
     ui: {
       activeArticleId: null,                       // 分发工作台选中的文章
       selectedPlatforms: ['csdn', 'wechat', 'xhs', 'zhihu'], // 分发目标
-      rewriteResults: {},                          // { platformId: rewrite }
+      rewriteResults: {},                          // 当前文章的 { platformId: rewrite }
       editingArticleId: null,                      // 文章详情抽屉
       toasts: []
     },
     LS
   };
 
-  /* ---------- 惰性初始化：文章库 / 发布记录默认取 mock ---------- */
-  state.articles = state.articles || CP.mock.ARTICLES.map(a => ({ ...a }));
-  state.history = state.history || CP.mock.HISTORY.map(h => ({ ...h }));
+  /* ---------- 首次启动：内置样例数据，显式标记为演示 ---------- */
+  if (!state.articles) {
+    state.articles = CP.mock.ARTICLES.map(a => ({ ...a, demo: true }));
+    save(LS.articles, state.articles);
+  }
+  if (!state.history) {
+    state.history = CP.mock.HISTORY.map(h => ({ ...h, demo: true }));
+    save(LS.history, state.history);
+  }
 
   /* ---------- 数据操作 ---------- */
   const actions = {
@@ -72,7 +80,10 @@ window.CP = window.CP || {};
     },
     updateArticle(id, patch) {
       const a = state.articles.find(x => x.id === id);
-      if (a) Object.assign(a, patch);
+      if (a) {
+        Object.assign(a, patch);
+        if (patch.title || patch.body) delete a.demo; // 用户已编辑，不再是演示数据
+      }
       save(LS.articles, state.articles);
     },
     /* 按给定顺序重排文章库（拖拽排序用，未提及的文章保持相对顺序在后） */
@@ -133,9 +144,99 @@ window.CP = window.CP || {};
     },
     setRewriteResult(pid, result) {
       state.ui.rewriteResults[pid] = result;
+      const aid = state.ui.activeArticleId;
+      if (!aid) return;
+      state.rewrites[aid] = state.rewrites[aid] || {};
+      state.rewrites[aid][pid] = result;
+      save(LS.rewrites, state.rewrites);
     },
     clearRewrite() {
       state.ui.rewriteResults = {};
+      const aid = state.ui.activeArticleId;
+      if (aid && state.rewrites[aid]) {
+        delete state.rewrites[aid];
+        save(LS.rewrites, state.rewrites);
+      }
+    },
+    /* 切换文章时载入该文章已保存的改写稿 */
+    openRewriteFor(articleId) {
+      state.ui.rewriteResults = { ...((state.rewrites[articleId]) || {}) };
+      return state.ui.rewriteResults;
+    },
+    /* ---------- 演示数据 ---------- */
+    hasDemoData() {
+      return state.articles.some(a => a.demo) || state.history.some(h => h.demo);
+    },
+    clearDemoData() {
+      state.articles = state.articles.filter(a => !a.demo);
+      state.history = state.history.filter(h => !h.demo);
+      save(LS.articles, state.articles);
+      save(LS.history, state.history);
+      state.ui.rewriteResults = {};
+      state.ui.activeArticleId = null;
+    },
+    /* ---------- 全量备份 / 恢复（不含 AI Key 与平台凭据） ---------- */
+    exportAll() {
+      const s = state.settings || {};
+      return JSON.stringify({
+        app: 'ContentPort',
+        format: 1,
+        exportedAt: new Date().toISOString(),
+        note: '备份不包含 AI API Key 与平台凭据，恢复后需重新填写',
+        data: {
+          portrait: state.portrait,
+          articles: state.articles,
+          history: state.history,
+          scheduledPublishes: state.scheduledPublishes,
+          rewrites: state.rewrites,
+          sniffDone: state.sniffDone,
+          settings: {
+            ai: { baseUrl: (s.ai && s.ai.baseUrl) || '', model: (s.ai && s.ai.model) || '', apiKey: '' },
+            autoPull: s.autoPull || { enabled: true, interval: 30 },
+            accounts: Object.fromEntries(Object.entries(s.accounts || {}).map(([pid, acc]) => [
+              pid,
+              { linked: !!acc.linked, nickname: acc.nickname || '', method: acc.method || '', updatedAt: acc.updatedAt || '', credOk: false }
+            ]))
+          }
+        }
+      }, null, 2);
+    },
+    importAll(json) {
+      let obj;
+      try { obj = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { throw new Error('备份文件不是合法 JSON'); }
+      if (!obj || obj.app !== 'ContentPort' || !obj.data) throw new Error('不是 ContentPort 的备份文件');
+      const d = obj.data;
+      if (!Array.isArray(d.articles) || !Array.isArray(d.history)) throw new Error('备份缺少文章或发布记录');
+      state.portrait = d.portrait || null;
+      state.articles = d.articles;
+      state.history = d.history;
+      state.scheduledPublishes = Array.isArray(d.scheduledPublishes) ? d.scheduledPublishes : [];
+      state.rewrites = d.rewrites && typeof d.rewrites === 'object' ? d.rewrites : {};
+      state.sniffDone = !!d.sniffDone;
+      const incoming = d.settings || {};
+      state.settings = {
+        ai: {
+          baseUrl: (incoming.ai && incoming.ai.baseUrl) || '',
+          apiKey: (state.settings.ai && state.settings.ai.apiKey) || '',
+          model: (incoming.ai && incoming.ai.model) || ''
+        },
+        autoPull: incoming.autoPull || { enabled: true, interval: 30 },
+        accounts: incoming.accounts || {}
+      };
+      save(LS.portrait, state.portrait);
+      save(LS.articles, state.articles);
+      save(LS.history, state.history);
+      save(LS.scheduled, state.scheduledPublishes);
+      save(LS.rewrites, state.rewrites);
+      save(LS.sniffDone, state.sniffDone);
+      save(LS.settings, state.settings);
+      state.ui.rewriteResults = {};
+      state.ui.activeArticleId = null;
+      return {
+        articles: state.articles.length,
+        history: state.history.length,
+        rewrites: Object.keys(state.rewrites).length
+      };
     }
   };
 

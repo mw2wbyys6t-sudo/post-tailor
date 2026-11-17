@@ -647,3 +647,20 @@ input, select, textarea { font-family: inherit; color: var(--ink); }
   .split-2 { grid-template-columns: 1fr; }
   .report-grid { grid-template-columns: 1fr; }
 }
+
+/* 窄视口降级：收起侧边栏为图标条，避免与主内容重叠（桌面端最小窗口 1100px 不触发） */
+@media (max-width: 980px) {
+  .app-shell { flex-direction: column; }
+  .sidebar {
+    width: 100%; min-height: 0; position: static;
+    flex-direction: row; align-items: center; gap: 12px;
+    padding: 10px 14px; overflow-x: auto;
+  }
+  .sidebar .brand { flex: none; }
+  .sidebar .brand-sub, .sidebar .nav-label, .sidebar .sidebar-user, .sidebar .sidebar-ver { display: none; }
+  .sidebar .nav { flex-direction: row; gap: 6px; }
+  .sidebar .nav a { padding: 7px 9px; }
+  .sidebar .nav a span { display: none; }
+  .sidebar .sidebar-foot { margin-left: auto; }
+  .main { width: 100%; }
+}

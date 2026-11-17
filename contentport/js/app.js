@@ -51,7 +51,7 @@ window.CP = window.CP || {};
             </div>
             <button class="btn btn-ghost btn-sm" data-act="settings" title="设置">${ui().icon('settings', 15)}</button>
           </div>
-          <div class="sidebar-ver"><span>v0.9.0 Prototype</span><span>PC</span></div>
+          <div class="sidebar-ver"><span>v1.3.0</span><span>离线优先</span></div>
         </aside>
         <div class="main">
           <header class="topbar">
@@ -61,7 +61,7 @@ window.CP = window.CP || {};
             </div>
             <div class="topbar-right">
               <span class="badge" id="sniff-badge" style="cursor:pointer" data-act="goto-audience">
-                ${S().sniffDone ? ui().icon('checkCircle', 13) + ' 已嗅探' : ui().icon('radar', 13) + ' 未嗅探'}
+                ${S().sniffDone ? ui().icon('checkCircle', 13) + ' 画像已生成' : ui().icon('radar', 13) + ' 未生成画像'}
               </span>
               <button class="btn btn-primary btn-sm" data-act="goto-distribute">${ui().icon('send', 14)} 去分发</button>
             </div>
@@ -112,41 +112,32 @@ window.CP = window.CP || {};
     const b = document.querySelector('#sniff-badge');
     if (!b) return;
     b.innerHTML = S().sniffDone
-      ? ui().icon('checkCircle', 13) + ' 已嗅探'
-      : ui().icon('radar', 13) + ' 未嗅探';
+      ? ui().icon('checkCircle', 13) + ' 画像已生成'
+      : ui().icon('radar', 13) + ' 未生成画像';
   };
 
-  /* ---------- 设置弹窗（保存用户提供的 API Key） ---------- */
-  function openSettings() {
+  /* ---------- 设置弹窗（AI Key 存入系统钥匙串） ---------- */
+  async function openSettings() {
     const s = S().settings;
-    const platforms = s.platforms || {};
     const ap = s.autoPull || { enabled: true, interval: 30 };
+    let keyStored = false;
+    try { keyStored = !!(await CP.vault.getRaw('ai:key')); } catch (_) { keyStored = false; }
     ui().openModal(`
       <div class="modal-head">
         <h3>设置</h3>
-        <p>接入 AI / 平台 API 后，深度改写与自动发布将生效。配置保存在本机浏览器。</p>
+        <p>AI Key 与平台凭据存入系统钥匙串，明文不落盘；平台账号请在「账号中心」登录。</p>
       </div>
       <div class="modal-body">
         <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('bot', 14)} AI 服务（OpenAI 兼容）</div>
         <label class="label" style="margin-top:8px">Base URL</label>
         <input class="input" id="set-base" placeholder="https://api.deepseek.com" value="${ui().esc(s.ai.baseUrl)}" />
         <label class="label" style="margin-top:12px">API Key</label>
-        <input class="input" id="set-key" type="password" placeholder="sk-..." value="${ui().esc(s.ai.apiKey)}" />
+        <input class="input" id="set-key" type="password" placeholder="${keyStored ? '已保存（留空则不修改）' : 'sk-...'}" value="" />
         <label class="label" style="margin-top:12px">模型名称</label>
         <input class="input" id="set-model" placeholder="deepseek-chat" value="${ui().esc(s.ai.model)}" />
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           <button class="btn btn-soft btn-sm" id="set-test">${ui().icon('zap', 13)} 测试连接</button>
-          <span class="hint" id="set-test-msg" style="margin-top:0"></span>
-        </div>
-        <div class="divider"></div>
-        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('globe', 14)} 平台开放 API（可选，用于自动发布）</div>
-        <div class="hint" style="margin-top:6px">填写后，发布时将走对应平台开放接口自动发布；留空则使用「复制稿」模式。</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-          ${M().PLATFORMS.map(p => `
-            <div>
-              <label class="label" style="color:${p.color}">${p.name} API Key</label>
-              <input class="input" data-pk="${p.id}" type="password" placeholder="可选" value="${ui().esc(platforms[p.id] || '')}" />
-            </div>`).join('')}
+          <span class="hint" id="set-test-msg" style="margin-top:0">${keyStored ? 'Key 已加密保存' : '尚未保存 Key'}</span>
         </div>
         <div class="divider"></div>
         <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('clock', 14)} 数据自动回拉</div>
@@ -160,6 +151,14 @@ window.CP = window.CP || {};
             ${[15, 30, 60, 180].map(m => `<option value="${m}" ${(ap.interval || 30) === m ? 'selected' : ''}>每 ${m} 分钟</option>`).join('')}
           </select>
           <span class="hint" style="margin:0">关闭开关可立即停止自动回拉</span>
+        </div>
+        <div class="divider"></div>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('download', 14)} 数据备份</div>
+        <div class="hint" style="margin-top:6px">导出文章库、发布记录、改写稿与画像为一个 JSON 文件；不含 AI Key 与平台凭据，恢复后需重新登录。</div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-soft btn-sm" id="set-export">${ui().icon('download', 13)} 导出备份</button>
+          <button class="btn btn-ghost btn-sm" id="set-import">${ui().icon('upload', 13)} 导入备份</button>
+          <input type="file" id="set-import-file" accept="application/json,.json" style="display:none" />
         </div>
       </div>
       <div class="modal-foot">
@@ -175,14 +174,21 @@ window.CP = window.CP || {};
       const msg = modal.querySelector('#set-test-msg');
       btn.disabled = true;
       msg.textContent = '测试中…';
-      // 先临时保存用于测试
+      // 先把当前输入写入保险库再测试（Key 不写 localStorage）
+      const keyInput = document.getElementById('set-key').value.trim();
+      try {
+        if (keyInput) await CP.vault.setAiKey(keyInput);
+      } catch (e) {
+        msg.innerHTML = `<span style="color:var(--danger)">${ui().icon('x', 12)} ${ui().esc(e.message || '安全存储不可用')}</span>`;
+        btn.disabled = false;
+        return;
+      }
       CP.actions.saveSettings({
         ai: {
           baseUrl: document.getElementById('set-base').value.trim(),
-          apiKey: document.getElementById('set-key').value.trim(),
+          apiKey: '',
           model: document.getElementById('set-model').value.trim()
         },
-        platforms: collectPlatformKeys(),
         autoPull: collectAutoPull()
       });
       try {
@@ -198,29 +204,52 @@ window.CP = window.CP || {};
       btn.disabled = false;
     });
 
-    modal.querySelector('#set-save').addEventListener('click', () => {
+    modal.querySelector('#set-save').addEventListener('click', async () => {
+      const keyInput = document.getElementById('set-key').value.trim();
+      try {
+        if (keyInput) await CP.vault.setAiKey(keyInput);
+      } catch (e) {
+        ui().toast(e.message || '安全存储不可用，Key 未保存', 'warn');
+        return;
+      }
       CP.actions.saveSettings({
         ai: {
           baseUrl: document.getElementById('set-base').value.trim(),
-          apiKey: document.getElementById('set-key').value.trim(),
+          apiKey: '',
           model: document.getElementById('set-model').value.trim()
         },
-        platforms: collectPlatformKeys(),
         autoPull: collectAutoPull()
       });
-      ui().toast('配置已保存（存于本机）', 'ok');
+      ui().toast('配置已保存（AI Key 存入系统钥匙串）', 'ok');
       modal.closest('.modal-wrap').querySelector('[data-close]').click();
       restartAutoPull();
     });
 
-    function collectPlatformKeys() {
-      const out = {};
-      modal.querySelectorAll('[data-pk]').forEach(inp => {
-        const v = inp.value.trim();
-        if (v) out[inp.dataset.pk] = v;
-      });
-      return out;
-    }
+    /* 数据备份 / 恢复 */
+    modal.querySelector('#set-export').addEventListener('click', () => {
+      const stamp = new Date().toISOString().slice(0, 10);
+      ui().downloadFile(`ContentPort-backup-${stamp}.json`, CP.actions.exportAll(), 'application/json');
+      ui().toast('备份已导出（不含密钥）', 'ok');
+    });
+    const importFile = modal.querySelector('#set-import-file');
+    modal.querySelector('#set-import').addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', () => {
+      const file = importFile.files && importFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const r = CP.actions.importAll(String(reader.result));
+          ui().toast(`已恢复：${r.articles} 篇文章、${r.history} 条记录`, 'ok');
+          modal.closest('.modal-wrap').querySelector('[data-close]').click();
+          renderShell();
+          render();
+        } catch (e) {
+          ui().toast(e.message || '导入失败', 'warn');
+        }
+      };
+      reader.readAsText(file);
+    });
 
     function collectAutoPull() {
       return {
@@ -291,8 +320,33 @@ window.CP = window.CP || {};
     }
   }
 
+  /* ---------- 供页面调用的重渲染 ---------- */
+  CP.refreshPage = function () {
+    const content = document.getElementById('content');
+    const pageFn = CP.getPage(currentRoute());
+    if (pageFn && content) pageFn(content, { key: currentRoute() });
+    CP.updateSniffBadge();
+    restartAutoPull();
+  };
+
+  /* ---------- 启动时处理错过的定时任务（应用未运行不会执行） ---------- */
+  function markMissedSchedules() {
+    let changed = false;
+    S().scheduledPublishes.forEach(t => {
+      if (t.status === 'pending' && new Date(t.scheduledAt).getTime() < Date.now() - 60 * 1000) {
+        CP.actions.updateScheduled(t.id, { status: 'missed', error: '应用未运行，已错过计划时间，请重新安排' });
+        changed = true;
+      }
+    });
+    if (changed) {
+      try { window.dispatchEvent(new Event('cp:sched-updated')); } catch (_) { /* ignore */ }
+    }
+  }
+
   /* ---------- 初始化 ---------- */
-  function init() {
+  async function init() {
+    try { await CP.vault.migrate(); } catch (_) { /* 保险库不可用时保持原样 */ }
+    markMissedSchedules();
     renderShell();
     render();
     window.addEventListener('hashchange', render);

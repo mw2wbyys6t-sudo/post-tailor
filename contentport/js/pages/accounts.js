@@ -2,7 +2,7 @@
    ContentPort · 账号中心（accounts.js）
    登录 / 绑定 / 解绑平台账号
    登录方式：① 开放平台 API 凭据（AppID/AppSecret/Token）
-            ② 浏览器 Cookie（模拟平台网页登录，真实实现见 TODO）
+            ② 浏览器 Cookie（Electron 内打开平台登录页扫码捕获）
    ========================================================= */
 window.CP = window.CP || {};
 
@@ -11,7 +11,7 @@ window.CP = window.CP || {};
   const S = () => CP.state;
   const M = () => CP.mock;
 
-  /* 账号绑定状态（持久化在 settings.accounts） */
+  /* 账号绑定状态（持久化在 settings.accounts，仅存元数据，不含凭据） */
   function getAccounts() {
     return S().settings.accounts || {};
   }
@@ -19,6 +19,15 @@ window.CP = window.CP || {};
     const s = S().settings;
     s.accounts = accounts;
     CP.actions.saveSettings(s);
+  }
+  /* 凭据写入系统保险库；返回是否成功加密落盘 */
+  async function storeCredential(pid, credential) {
+    try {
+      const mode = await CP.vault.set(pid, credential);
+      return mode === 'keychain';
+    } catch (e) {
+      return false;
+    }
   }
 
   CP.registerPage('accounts', (root) => {
@@ -34,8 +43,8 @@ window.CP = window.CP || {};
       <div class="card fade-up" style="margin-bottom:16px">
         <div class="card-body" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600">${ui().icon('shield', 15)} 安全说明</span>
-          <span class="hint" style="margin:0;flex:1;min-width:220px">Cookie / API 凭据仅保存在本机浏览器 localStorage，不会上传；Electron 桌面版凭据存于本机应用数据目录。</span>
-          <span class="badge badge-ok">${ui().icon('lock', 12)} 本地存储</span>
+          <span class="hint" style="margin:0;flex:1;min-width:220px">平台凭据通过系统钥匙串（Keychain / DPAPI / libsecret）加密后保存在本机应用数据目录，明文不落盘、不上传；解绑账号会同时删除加密凭据。</span>
+          <span class="badge badge-ok">${ui().icon('lock', 12)} 加密存储</span>
         </div>
       </div>
       <div class="plat-grid stagger" id="acc-list">
@@ -47,7 +56,7 @@ window.CP = window.CP || {};
           <ul class="rule-list">
             <li><span class="rl-ic">${ui().icon('send', 15)}</span><span><strong>已绑定账号</strong> → 发布时走「自动发布」，以你的账号直接发布到平台。</span></li>
             <li><span class="rl-ic">${ui().icon('copy', 15)}</span><span><strong>未绑定账号</strong> → 使用「复制稿」模式，生成成品后手动粘贴到平台编辑器（最稳定，无需授权）。</span></li>
-            <li><span class="rl-ic">${ui().icon('link', 15)}</span><span>真实接入各平台开放接口后，自动发布将直接生效；当前原型模拟绑定流程用于演示交互。</span></li>
+            <li><span class="rl-ic">${ui().icon('link', 15)}</span><span><strong>各平台通道</strong>：CSDN 走 MetaWeblog 接口、微信公众号走官方 API、知乎走登录态接口、小红书走浏览器自动填充发布（失败回退手动确认）。平台改版可能导致通道失效，届时请升级版本。</span></li>
           </ul>
         </div>
       </div>`;
@@ -56,11 +65,12 @@ window.CP = window.CP || {};
       btn.addEventListener('click', () => openLoginModal(btn.dataset.login, root));
     });
     root.querySelectorAll('[data-logout]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const pid = btn.dataset.logout;
         const acc = getAccounts();
         delete acc[pid];
         saveAccounts(acc);
+        try { await CP.vault.clear(pid); } catch (_) { /* 保险库不可用时忽略 */ }
         ui().toast('已解绑该平台账号', 'info');
         renderCardAll(root);
       });
@@ -117,11 +127,12 @@ window.CP = window.CP || {};
         btn.addEventListener('click', () => openLoginModal(btn.dataset.login, root));
       });
       list.querySelectorAll('[data-logout]').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const pid = btn.dataset.logout;
           const acc = getAccounts();
           delete acc[pid];
           saveAccounts(acc);
+          try { await CP.vault.clear(pid); } catch (_) { /* 保险库不可用时忽略 */ }
           ui().toast('已解绑该平台账号', 'info');
           renderCardAll(root);
         });
@@ -247,13 +258,14 @@ window.CP = window.CP || {};
         const res = await CP.api.loginOAuth(pid);
         btn.innerHTML = ui().icon('check', 15) + ' 完成';
         if (res.code === 0) {
+          const stored = await storeCredential(pid, { cookie: res.data.cookie });
           const accounts = getAccounts();
           accounts[pid] = {
             linked: true,
             nickname: res.data.nickname,
             method: 'oauth',
             updatedAt: new Date().toLocaleDateString('zh-CN'),
-            credential: { cookie: res.data.cookie }
+            credOk: stored
           };
           saveAccounts(accounts);
           ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, 'ok');
@@ -292,17 +304,19 @@ window.CP = window.CP || {};
       btn.innerHTML = ui().icon('check', 15) + ' 完成';
 
       if (res.code === 0) {
+        const stored = await storeCredential(pid, method === 'api' ? credential : { cookie });
         const accounts = getAccounts();
         accounts[pid] = {
           linked: true,
           nickname: res.data.nickname || nick,
           method,
           updatedAt: new Date().toLocaleDateString('zh-CN'),
-          // 仅存本机；CSDN=用户名+密码，微信=AppID+AppSecret，其余平台=Token/Cookie
-          credential: method === 'api' ? credential : { cookie }
+          // 凭据已进入系统保险库，这里只记录状态，不落明文
+          credOk: stored
         };
         saveAccounts(accounts);
-        ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, 'ok');
+        ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, stored ? 'ok' : 'warn');
+        if (!stored) ui().toast('系统安全存储不可用，凭据仅本次运行有效', 'warn');
         modal.closest('.modal-wrap').querySelector('[data-close]').click();
         renderCardAll(root);
       } else {

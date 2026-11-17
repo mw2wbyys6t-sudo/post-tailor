@@ -19,6 +19,8 @@ window.CP = window.CP || {};
       return;
     }
     if (!S().ui.activeArticleId) CP.actions.setActiveArticle(article.id);
+    /* 载入该文章已保存的改写稿（重启应用不丢） */
+    CP.actions.openRewriteFor(article.id);
 
     const sel = S().ui.selectedPlatforms;
     activePid = activePid && sel.includes(activePid) ? activePid : sel[0];
@@ -180,7 +182,8 @@ window.CP = window.CP || {};
       </div>
 
       <div class="rewrite-toolbar">
-        <button class="btn btn-primary" data-act="publish" data-pid="${pid}">${ui().icon('send', 15)} 一键发布</button>
+        <button class="btn btn-primary" data-act="publish" data-pid="${pid}">${ui().icon('send', 15)} 发布到${p.name}</button>
+        <button class="btn btn-soft" data-act="publish-all">${ui().icon('send', 15)} 批量发布已改写平台</button>
         <button class="btn btn-ghost" data-act="copy" data-pid="${pid}">${ui().icon('copy', 15)} 复制改写稿</button>
         <button class="btn btn-ghost" data-act="download" data-pid="${pid}">${ui().icon('download', 15)} 下载稿</button>
         <button class="btn btn-ghost" data-act="ai-deep" data-pid="${pid}">${ui().icon('bot', 15)} AI 深度改写</button>
@@ -194,6 +197,7 @@ window.CP = window.CP || {};
       });
     });
     right.querySelector('[data-act="publish"]').addEventListener('click', (e) => doPublish(root, e.target.closest('[data-act="publish"]').dataset.pid));
+    right.querySelector('[data-act="publish-all"]').addEventListener('click', () => doPublishAll(root));
     right.querySelector('[data-act="copy"]').addEventListener('click', (e) => copyRewrite(e.target.closest('[data-act="copy"]').dataset.pid));
     right.querySelector('[data-act="download"]').addEventListener('click', (e) => downloadRewrite(e.target.closest('[data-act="download"]').dataset.pid));
     right.querySelector('[data-act="ai-deep"]').addEventListener('click', (e) => aiDeep(root, e.target.closest('[data-act="ai-deep"]').dataset.pid));
@@ -207,7 +211,7 @@ window.CP = window.CP || {};
     const articleId = S().ui.activeArticleId;
     if (!articleId) { ui().toast('请先选择文章', 'warn'); return; }
 
-    const aiReady = !!(S().settings.ai.apiKey && S().settings.ai.baseUrl);
+    const aiReady = await CP.api.isAiReady();
     loading = true;
     CP.actions.clearRewrite();
     const btn = root.querySelector('#d-run');
@@ -244,13 +248,9 @@ window.CP = window.CP || {};
     return accounts[pid] && accounts[pid].linked ? accounts[pid] : null;
   }
 
-  /* 凭据是否完整（与 api.js 的自动发布判定一致） */
+  /* 账号能否自动发布：登录时已校验凭据，凭据存于系统保险库 */
   function credOkOf(pid, acc) {
-    const c = (acc && acc.credential) || {};
-    return pid === 'csdn' ? !!(c.username && c.password)
-      : pid === 'wechat' ? !!(c.appid && c.secret)
-      : (pid === 'zhihu' || pid === 'xhs') ? !!c.cookie
-      : false;
+    return !!(acc && acc.linked && acc.credOk !== false);
   }
 
   const Q_DIMS = [
@@ -442,6 +442,78 @@ window.CP = window.CP || {};
     }
   }
 
+  /* ---------- 批量发布：把已改写平台依次发布 ---------- */
+  function doPublishAll(root) {
+    const articleId = S().ui.activeArticleId;
+    const sel = S().ui.selectedPlatforms.filter(pid => S().ui.rewriteResults[pid]);
+    if (!sel.length) { ui().toast('请先对目标平台完成智能改写', 'warn'); return; }
+
+    const rows = sel.map(pid => {
+      const p = M().PLATFORMS.find(x => x.id === pid);
+      const acc = accountOf(pid);
+      const auto = !!(acc && credOkOf(pid, acc));
+      return {
+        pid, name: p.name, color: p.color, acc,
+        mode: auto ? (pid === 'xhs' ? '浏览器自动发布' : '自动发布') : '复制稿'
+      };
+    });
+    const autoCount = rows.filter(r => r.mode !== '复制稿').length;
+
+    ui().openModal(`
+      <div class="modal-head">
+        <h3>批量发布 ${rows.length} 个平台</h3>
+        <p>${autoCount} 个平台将自动发布，${rows.length - autoCount} 个平台生成复制稿。发布按顺序执行，失败不影响其他平台。</p>
+      </div>
+      <div class="modal-body" style="padding:10px 26px 14px">
+        ${rows.map(r => `
+          <div class="article-row" style="cursor:default">
+            <span class="dot" style="width:9px;height:9px;border-radius:50%;background:${r.color};flex:none"></span>
+            <div class="ar-main"><div class="ar-title">${r.name}</div>
+              <div class="ar-meta">${r.acc ? ui().esc(r.acc.nickname) : '未登录账号'}</div></div>
+            <span class="badge ${r.mode === '复制稿' ? 'badge-gray' : 'badge-ok'}">${r.mode}</span>
+          </div>`).join('')}
+        <div class="hint" style="margin-top:10px" id="bulk-status">等待开始…</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-mclose>取消</button>
+        <button class="btn btn-primary" id="bulk-go">${ui().icon('send', 15)} 开始发布</button>
+      </div>`, { width: 560 });
+
+    const modal = document.querySelector('.modal');
+    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+    modal.querySelector('#bulk-go').addEventListener('click', async () => {
+      const btn = modal.querySelector('#bulk-go');
+      const status = modal.querySelector('#bulk-status');
+      btn.disabled = true;
+      let ok = 0, copy = 0, failed = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const r = S().ui.rewriteResults[row.pid];
+        status.textContent = `正在发布（${i + 1}/${rows.length}）：${row.name}…`;
+        const res = await CP.api.publish({
+          articleId, platformId: row.pid, title: r.title, body: r.body,
+          accountNickname: row.acc ? row.acc.nickname : '',
+          score: r.quality ? r.quality.total : r.score,
+          algorithm: r.algorithm ? { ...r.algorithm, quality: r.quality ? r.quality.dims : null } : null
+        });
+        if (res.code === 0) {
+          if (res.data && (res.data.mode === 'auto' || res.data.openedPage)) ok++;
+          else copy++;
+        } else {
+          failed.push(row.name + '：' + (res.msg || '失败'));
+        }
+      }
+      btn.disabled = false;
+      btn.innerHTML = ui().icon('check', 15) + ' 完成';
+      status.innerHTML = `完成：自动发布 ${ok} 个，复制稿 ${copy} 个${failed.length ? `，失败 ${failed.length} 个` : ''}`;
+      if (failed.length) {
+        status.innerHTML += `<div style="color:var(--danger);margin-top:6px">${failed.map(f => ui().esc(f)).join('<br>')}</div>`;
+      }
+      ui().toast(`批量发布完成：成功 ${ok + copy}，失败 ${failed.length}`, failed.length ? 'warn' : 'ok');
+      try { window.dispatchEvent(new Event('cp:history-updated')); } catch (_) { /* ignore */ }
+    });
+  }
+
   /* ---------- 复制改写稿 ---------- */
   function copyRewrite(pid) {
     const r = S().ui.rewriteResults[pid];
@@ -516,9 +588,9 @@ window.CP = window.CP || {};
     modal.querySelectorAll('[data-pick]').forEach(row => {
       row.addEventListener('click', () => {
         CP.actions.setActiveArticle(row.dataset.aid);
-        CP.actions.clearRewrite();
+        CP.actions.openRewriteFor(row.dataset.aid);
         modal.closest('.modal-wrap').querySelector('[data-close]').click();
-        location.reload();
+        CP.refreshPage();
       });
     });
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());

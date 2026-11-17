@@ -3,8 +3,9 @@
    - 创建桌面窗口并加载前端
    - ipcMain 代理 AI 请求（绕过浏览器 CORS，Key 不出本机）
    ========================================================= */
-const { app, BrowserWindow, ipcMain, shell, session, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, clipboard, safeStorage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 const isDev = !app.isPackaged;
 
@@ -63,6 +64,60 @@ ipcMain.handle('ai:call', async (_event, { url, body, apiKey }) => {
   } finally {
     clearTimeout(timer);
   }
+});
+
+/* ---------- 凭据保险库：凭据加密落盘，渲染进程不再持有明文 ----------
+   使用系统钥匙串（macOS Keychain / Windows DPAPI / Linux libsecret）加密，
+   密文写入用户数据目录，权限 0600。系统不支持加密时明确报错，不静默降级。 */
+function vaultFile() {
+  return path.join(app.getPath('userData'), 'credentials.enc.json');
+}
+function readVault() {
+  try {
+    const raw = fs.readFileSync(vaultFile(), 'utf8');
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (_) {
+    return {};
+  }
+}
+function writeVault(obj) {
+  const file = vaultFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(obj), { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch (_) { /* 部分文件系统不支持 */ }
+}
+
+ipcMain.handle('secure:available', () => {
+  try { return safeStorage.isEncryptionAvailable(); } catch (_) { return false; }
+});
+
+ipcMain.handle('secure:set', (_e, { key, value }) => {
+  if (!key) throw new Error('缺少凭据标识');
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('系统安全存储不可用，无法安全保存凭据');
+  const vault = readVault();
+  vault[key] = safeStorage.encryptString(String(value)).toString('base64');
+  writeVault(vault);
+  return true;
+});
+
+ipcMain.handle('secure:get', (_e, { key }) => {
+  const vault = readVault();
+  if (!key || !vault[key]) return '';
+  try {
+    return safeStorage.decryptString(Buffer.from(vault[key], 'base64'));
+  } catch (_) {
+    return '';
+  }
+});
+
+ipcMain.handle('secure:delete', (_e, { key }) => {
+  const vault = readVault();
+  if (vault[key]) {
+    delete vault[key];
+    writeVault(vault);
+  }
+  return true;
 });
 
 /* ---------- 平台发布通道（真实 API） ---------- */
@@ -342,9 +397,23 @@ async function xhsPublish({ title, content }) {
   };
 }
 
+/* 从保险库读取平台凭据（渲染进程无需持有明文） */
+function credentialFromVault(platformId) {
+  const vault = readVault();
+  const enc = vault['platform:' + platformId];
+  if (!enc) return null;
+  try {
+    return JSON.parse(safeStorage.decryptString(Buffer.from(enc, 'base64')));
+  } catch (_) {
+    return null;
+  }
+}
+
 /* ---------- 发布：渲染进程 → 主进程 → 平台 API ---------- */
 ipcMain.handle('platform:publish', async (_event, payload) => {
-  const { platformId, credential, title, content, digest } = payload;
+  const { platformId, title, content, digest } = payload;
+  const credential = payload.credential || credentialFromVault(platformId);
+  if (!credential) throw new Error('未找到已保存的平台凭据，请重新登录账号');
   switch (platformId) {
     case 'csdn': {
       const res = await csdn.publish({
@@ -381,7 +450,9 @@ ipcMain.handle('platform:publish', async (_event, payload) => {
 
 /* ---------- 数据回拉：渲染进程 → 主进程 → 平台统计接口 ---------- */
 ipcMain.handle('platform:stats', async (_event, payload) => {
-  const { platformId, credential, postId } = payload;
+  const { platformId, postId } = payload;
+  const credential = payload.credential || credentialFromVault(platformId);
+  if (!credential) throw new Error('未找到已保存的平台凭据，请重新登录账号');
   switch (platformId) {
     case 'csdn':
       return await csdn.fetchStats({ username: credential.username, postId });

@@ -18,11 +18,109 @@ window.CP = window.CP || {};
   const REAL_PLATFORM_IDS = ['csdn', 'wechat', 'zhihu', 'xhs'];
 
   /* ========================================================
+     凭据保险库
+     - Electron：系统钥匙串加密后落盘（safeStorage），渲染进程不持有明文
+     - 浏览器：仅进程内内存（用于本地预览，刷新即失效，不落明文）
+     存放内容：平台凭据 platform:<pid>、AI Key ai:key
+     ======================================================== */
+  const memoryVault = new Map();
+  const hasKeychain = () => {
+    const e = window.electronAPI;
+    return !!(e && typeof e.secureSet === 'function');
+  };
+  const vault = {
+    async available() {
+      const e = window.electronAPI;
+      if (e && typeof e.secureAvailable === 'function') {
+        try { return await e.secureAvailable(); } catch (_) { return false; }
+      }
+      return true; // 浏览器内存模式：仅本会话有效
+    },
+    async setRaw(key, value) {
+      const e = window.electronAPI;
+      if (hasKeychain()) {
+        await e.secureSet(key, String(value));
+        return 'keychain';
+      }
+      memoryVault.set(key, String(value));
+      return 'memory';
+    },
+    async getRaw(key) {
+      const e = window.electronAPI;
+      if (hasKeychain()) {
+        try { return (await e.secureGet(key)) || ''; } catch (_) { return ''; }
+      }
+      return memoryVault.get(key) || '';
+    },
+    async clearRaw(key) {
+      const e = window.electronAPI;
+      if (hasKeychain()) {
+        await e.secureDelete(key);
+        return;
+      }
+      memoryVault.delete(key);
+    },
+    async set(platformId, credential) {
+      return vault.setRaw('platform:' + platformId, JSON.stringify(credential));
+    },
+    async get(platformId) {
+      const raw = await vault.getRaw('platform:' + platformId);
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (_) { return null; }
+    },
+    async clear(platformId) {
+      return vault.clearRaw('platform:' + platformId);
+    },
+    /* AI Key 同样走保险库，不再明文写 localStorage */
+    async getAiKey() {
+      const stored = await vault.getRaw('ai:key');
+      if (stored) return stored;
+      const legacy = (S().settings.ai && S().settings.ai.apiKey) || '';
+      if (legacy) {
+        try {
+          await vault.setRaw('ai:key', legacy);
+          const s = S().settings;
+          s.ai.apiKey = '';
+          CP.actions.saveSettings(s);
+        } catch (_) { /* 保险库不可用则退回原值 */ }
+      }
+      return legacy;
+    },
+    async setAiKey(value) {
+      if (!value) {
+        await vault.clearRaw('ai:key');
+        return 'cleared';
+      }
+      return vault.setRaw('ai:key', value);
+    },
+    /* 老版本把平台凭据明文写在 settings.accounts[pid].credential，这里一次性迁移 */
+    async migrate() {
+      const accounts = S().settings.accounts || {};
+      let changed = false;
+      for (const pid of Object.keys(accounts)) {
+        const acc = accounts[pid];
+        if (acc && acc.credential) {
+          try {
+            await vault.set(pid, acc.credential);
+            delete acc.credential;
+            acc.credOk = true;
+            changed = true;
+          } catch (_) { /* 保险库不可用时保留原状，不丢用户凭据 */ }
+        }
+      }
+      if (changed) CP.actions.saveSettings(S().settings);
+      return changed;
+    }
+  };
+  CP.vault = vault;
+
+  /* ========================================================
      AI 调用基础（OpenAI 兼容 /chat/completions）
      ======================================================== */
   async function aiChat(messages, { json = false, temperature = 0.7, maxTokens = 4000 } = {}) {
     const s = S().settings.ai;
-    if (!s.apiKey) throw new Error('未配置 AI API Key');
+    const apiKey = await vault.getAiKey();
+    if (!apiKey) throw new Error('未配置 AI API Key');
     const base = (s.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '');
     const url = base + '/chat/completions';
     const body = {
@@ -37,11 +135,11 @@ window.CP = window.CP || {};
     let data;
     if (window.electronAPI && typeof window.electronAPI.callAI === 'function') {
       // Electron：主进程代理调用（无 CORS 限制，Key 不出本机）
-      data = await window.electronAPI.callAI({ url, body, apiKey: s.apiKey });
+      data = await window.electronAPI.callAI({ url, body, apiKey });
     } else {
       const resp = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.apiKey },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify(body)
       });
       if (!resp.ok) {
@@ -144,26 +242,39 @@ window.CP = window.CP || {};
     },
 
     /* --------------------------------------------------------
-       POST /api/sniff  —— 触发平台受众嗅探
+       POST /api/sniff  —— 生成平台受众画像基线
        body: { platformIds: string[] }
-       返回每个平台的受众嗅探报告
+       说明：本应用不抓取平台实时数据。这里输出的是内置平台画像
+       基线（受众、语气、结构偏好），数值由画像雷达确定性推导，
+       不掺随机数，也不宣称是实时快照。
        -------------------------------------------------------- */
     async runSniff(platformIds) {
-      await delay(3200);
+      await delay(1400);
       const platforms = M().PLATFORMS.filter(p => platformIds.includes(p.id));
-      const reports = platforms.map(p => ({
-        platformId: p.id,
-        snapshot: {
-          heatIndex: 60 + Math.round(Math.random() * 35),
-          activeTime: ['9-11 点', '12-14 点', '20-23 点'],
-          growth: (4 + Math.random() * 10).toFixed(1) + '%',
-          sampledAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-        },
-        audience: p.audience,
-        trending: p.trending,
-        styleRules: p.styleRules,
-        radar: p.radar
-      }));
+      const BEST_TIME = {
+        csdn: ['9-11 点', '14-17 点'],
+        wechat: ['7-9 点', '20-22 点'],
+        xhs: ['12-14 点', '19-23 点'],
+        zhihu: ['21-23 点', '周末上午']
+      };
+      const reports = platforms.map(p => {
+        const r = p.radar;
+        return {
+          platformId: p.id,
+          basis: '内置画像基线',
+          snapshot: {
+            // 用于排序参考的画像强度，由雷达维度加权得出（非平台真实热度）
+            heatIndex: Math.round(r.info * 0.3 + r.depth * 0.3 + r.interaction * 0.2 + r.tone * 0.2),
+            deepIndex: r.depth,
+            activeTime: BEST_TIME[p.id] || ['20-22 点'],
+            updatedAt: new Date().toLocaleDateString('zh-CN')
+          },
+          audience: p.audience,
+          trending: p.trending,
+          styleRules: p.styleRules,
+          radar: r
+        };
+      });
       CP.actions.markSniffDone();
       return { code: 0, data: reports };
     },
@@ -178,7 +289,7 @@ window.CP = window.CP || {};
       const article = CP.actions.getArticle(articleId);
       if (!article) return { code: 1, msg: '文章不存在' };
 
-      const aiReady = !!(S().settings.ai.apiKey && S().settings.ai.baseUrl);
+      const aiReady = !!(await vault.getAiKey()) && !!S().settings.ai.baseUrl;
       const pipeline = CP.engine && CP.engine.pipeline;
       const results = {};
       const errors = {};
@@ -207,7 +318,8 @@ window.CP = window.CP || {};
        -------------------------------------------------------- */
     async aiDeepRewrite(articleId, platformId) {
       const settings = S().settings.ai;
-      if (!settings.apiKey || !settings.baseUrl) {
+      const apiKey = await vault.getAiKey();
+      if (!apiKey || !settings.baseUrl) {
         return { code: 2, msg: '未配置 AI API，已使用内置规则引擎完成改写', useRule: true };
       }
       const article = CP.actions.getArticle(articleId);
@@ -230,10 +342,30 @@ window.CP = window.CP || {};
       if (prev && parsed.title) {
         prev.title = String(parsed.title).slice(0, 80);
         if (parsed.body) prev.body = parsed.body;
-        if (parsed.score) prev.score = clamp(parsed.score);
+        // 润色后必须重新本地质检，不能沿用模型自报分数
+        const engine = CP.engine;
+        if (engine && engine.analysis && engine.planner && engine.quality) {
+          const analysis = engine.analysis.analyze(article);
+          const platform = engine.strategies.getPlatform(platformId);
+          const plan = engine.planner.buildPlan(analysis, platformId, S().portrait || {});
+          const qa = engine.quality.check({ title: prev.title, body: prev.body }, analysis, plan, platform);
+          prev.quality = qa;
+          prev.score = qa.total;
+          prev.engine = prev.engine || 'hybrid';
+          prev.aiGenerated = true;
+        } else if (parsed.score) {
+          prev.score = clamp(parsed.score);
+        }
         CP.actions.setRewriteResult(platformId, prev);
       }
       return { code: 0, msg: 'AI 深度改写完成', useRule: false, data: parsed };
+    },
+
+    /* --------------------------------------------------------
+       GET /api/ai/ready  —— 是否已配置可用的 AI（Key 在保险库）
+       -------------------------------------------------------- */
+    async isAiReady() {
+      return !!(await vault.getAiKey()) && !!S().settings.ai.baseUrl;
     },
 
     /* --------------------------------------------------------
@@ -241,7 +373,7 @@ window.CP = window.CP || {};
        -------------------------------------------------------- */
     async aiPing() {
       const s = S().settings.ai;
-      if (!s.apiKey || !s.baseUrl) return { code: 2, msg: '请先填写 Base URL 与 API Key' };
+      if (!(await vault.getAiKey()) || !s.baseUrl) return { code: 2, msg: '请先填写 Base URL 与 API Key' };
       const t0 = Date.now();
       const content = await aiChat([
         { role: 'user', content: '请只回复两个字：正常' }
@@ -326,15 +458,12 @@ window.CP = window.CP || {};
       // 已登录账号 → 自动发布；否则复制稿模式
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];
-      // 凭据形状校验：按平台确认关键字段齐全，避免带错凭据去请求
-      const c = (acc && acc.credential) || {};
-      const credOk = platformId === 'csdn' ? (c.username && c.password)
-        : platformId === 'wechat' ? (c.appid && c.secret)
-        : (platformId === 'zhihu' || platformId === 'xhs') ? !!c.cookie
-        : false;
-      // 仅「已接入真实通道 + 已绑定账号 + 凭据完整」才走自动发布
+      // 凭据从系统保险库读取，渲染进程不再持有明文
+      const credential = await vault.get(platformId);
+      const credOk = !!(acc && acc.linked && credential && acc.credOk !== false);
+      // 仅「已接入真实通道 + 已绑定账号 + 凭据可用」才走自动发布
       const realReady = REAL_PLATFORM_IDS.includes(platformId);
-      const autoPublish = !!(acc && acc.linked && credOk && realReady);
+      const autoPublish = !!(credOk && realReady);
       const pendingReal = !!(acc && acc.linked && !credOk && realReady);
       const rec = {
         id: 'h' + Date.now(),
@@ -356,7 +485,7 @@ window.CP = window.CP || {};
         try {
           const result = await electron.publishTo({
             platformId,
-            credential: acc.credential,
+            credential,
             title,
             content: body,
             digest: (article && article.summary) || ''
@@ -398,16 +527,17 @@ window.CP = window.CP || {};
        仅 Electron + 已登录账号可用
        -------------------------------------------------------- */
     async fetchStats({ platformId, postId }) {
-      if (!postId) return { code: 1, msg: '该记录没有可回拉的文章标识（小红书为浏览器辅助发布，暂不支持）' };
+      if (!postId) return { code: 1, msg: '该记录没有可回拉的文章标识（小红书为浏览器辅助发布，暂不支持回拉）' };
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];
-      if (!acc || !acc.linked || !acc.credential) return { code: 1, msg: '请先到账号中心登录该平台账号' };
+      const credential = await vault.get(platformId);
+      if (!acc || !acc.linked || !credential) return { code: 1, msg: '请先到账号中心登录该平台账号' };
       const electron = window.electronAPI;
       if (!electron || typeof electron.fetchStats !== 'function') {
         return { code: 1, msg: '数据回拉仅支持 Electron 桌面版' };
       }
       try {
-        const stats = await electron.fetchStats({ platformId, credential: acc.credential, postId });
+        const stats = await electron.fetchStats({ platformId, credential, postId });
         return { code: 0, data: stats };
       } catch (e) {
         return { code: 1, msg: e.message || '数据回拉失败' };

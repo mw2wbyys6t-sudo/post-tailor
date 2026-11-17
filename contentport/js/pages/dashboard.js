@@ -49,6 +49,15 @@ window.CP = window.CP || {};
         </div>
       </div>
 
+      ${CP.actions.hasDemoData() ? `
+      <div class="card fade-up" style="margin-bottom:16px;border-color:var(--amber);background:var(--amber-soft)">
+        <div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--amber)">${ui().icon('alert', 15)} 当前包含内置演示数据</span>
+          <span class="hint" style="margin:0;flex:1;min-width:220px">演示文章与发布记录仅用于快速体验，不代表真实发布结果。你可以一键清空后导入自己的文章。</span>
+          <button class="btn btn-ghost btn-sm" data-act="clear-demo">${ui().icon('trash', 13)} 清空演示数据</button>
+        </div>
+      </div>` : ''}
+
       <div class="flow-strip fade-up">
         ${steps.map((s, i) => `
           ${i > 0 ? `<div class="flow-arrow">${ui().icon('chevronRight', 16)}</div>` : ''}
@@ -78,13 +87,13 @@ window.CP = window.CP || {};
           <div class="stat-ic" style="background:linear-gradient(135deg,#0052CC,#4D8DFF)">${ui().icon('eye', 17)}</div>
           <div class="stat-val">${ui().fmtNum(totalViews)}</div>
           <div class="stat-lbl">累计阅读</div>
-          <div class="stat-delta up">${ui().icon('trending', 13)} 较上周 +18.2%</div>
+          <div class="stat-delta" style="color:var(--ink-3)">${ui().icon('refresh', 13)} 来自平台回拉数据</div>
         </div>
         <div class="card stat-card">
           <div class="stat-ic" style="background:linear-gradient(135deg,#128A62,#2FBF8A)">${ui().icon('activity', 17)}</div>
           <div class="stat-val">${avgScore(history)}</div>
-          <div class="stat-lbl">平均适配度</div>
-          <div class="stat-delta up">${ui().icon('trending', 13)} 高于行业均值 12%</div>
+          <div class="stat-lbl">平均质检分</div>
+          <div class="stat-delta" style="color:var(--ink-3)">${ui().icon('gauge', 13)} 代理指标，非平台流量</div>
         </div>
       </div>
 
@@ -121,7 +130,7 @@ window.CP = window.CP || {};
                       <div class="pc-tag">${p.tagline}</div>
                     </div>
                   </div>
-                  <div class="pc-heat">${ui().icon('flame', 13)} 热度 ${heatOf(p.id)}</div>
+                  <div class="pc-heat" title="由平台画像雷达推导，非实时平台热度">${ui().icon('flame', 13)} 画像强度 ${heatOf(p.id)}</div>
                   <div class="heat-bar"><i style="width:${heatOf(p.id)}%;background:${p.color}"></i></div>
                   <div class="pc-stat">
                     <div class="ps"><div class="ps-v">${cnt}</div><div class="ps-l">已分发</div></div>
@@ -194,6 +203,11 @@ window.CP = window.CP || {};
     bindAll(root, '[data-act="go-library"]', () => location.hash = '#/library');
     bindAll(root, '[data-act="go-history"]', () => location.hash = '#/history');
     bindAll(root, '[data-act="go-accounts"]', () => location.hash = '#/accounts');
+    bindAll(root, '[data-act="clear-demo"]', () => {
+      CP.actions.clearDemoData();
+      ui().toast('已清空演示数据，现在可以导入自己的文章', 'ok');
+      CP.refreshPage();
+    });
     root.querySelectorAll('[data-step]').forEach(el => {
       el.addEventListener('click', () => {
         const k = el.dataset.step;
@@ -238,8 +252,11 @@ window.CP = window.CP || {};
     return { points, labels: times, total: acc };
   }
 
+  /* 画像强度：由平台画像雷达确定性推导（不是平台真实热度） */
   function heatOf(pid) {
-    const map = { csdn: 82, wechat: 76, xhs: 91, zhihu: 69 };
-    return map[pid] || 70;
+    const p = M().PLATFORMS.find(x => x.id === pid);
+    if (!p || !p.radar) return 70;
+    const r = p.radar;
+    return Math.round(r.info * 0.3 + r.depth * 0.3 + r.interaction * 0.2 + r.tone * 0.2);
   }
 })();

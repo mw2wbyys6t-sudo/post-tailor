@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   publishTo: (payload) => ipcRenderer.invoke('platform:publish', payload),
   // 平台数据回拉（阅读/点赞/评论）
   fetchStats: (payload) => ipcRenderer.invoke('platform:stats', payload),
+  // 凭据保险库（系统钥匙串加密，渲染进程只传引用不落明文）
+  secureAvailable: () => ipcRenderer.invoke('secure:available'),
+  secureSet: (key, value) => ipcRenderer.invoke('secure:set', { key, value }),
+  secureGet: (key) => ipcRenderer.invoke('secure:get', { key }),
+  secureDelete: (key) => ipcRenderer.invoke('secure:delete', { key }),
   // 环境信息
   isElectron: true,
   platform: process.platform

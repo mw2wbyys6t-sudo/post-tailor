@@ -17,11 +17,11 @@ window.CP = window.CP || {};
       <div class="page-head fade-up">
         <div>
           <h2>受众嗅探</h2>
-          <p>模拟爬虫分析各平台读者画像，作为「受众自适应改写」的依据。</p>
+          <p>平台受众画像基线：年龄、职业、阅读习惯与内容偏好，作为「受众自适应改写」的依据。数据来自内置画像，不抓取平台实时数据。</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-primary" id="a-scan">${ui().icon('radar', 15)} 开始嗅探</button>
-          <button class="btn btn-ghost" id="a-scan-all">${ui().icon('refresh', 14)} 重新嗅探</button>
+          <button class="btn btn-primary" id="a-scan">${ui().icon('radar', 15)} 生成画像</button>
+          <button class="btn btn-ghost" id="a-scan-all">${ui().icon('refresh', 14)} 重新生成</button>
         </div>
       </div>
       <div class="sniff-hero fade-up" id="a-hero"></div>
@@ -42,8 +42,8 @@ window.CP = window.CP || {};
           <div class="scan-core"></div>
         </div>
         <div class="sniff-status">
-          <div class="ss-t">正在嗅探 ${M().PLATFORMS.length} 个平台…</div>
-          <div class="ss-d">正在分析平台受众画像与内容偏好</div>
+          <div class="ss-t">正在生成 ${M().PLATFORMS.length} 个平台的画像基线…</div>
+          <div class="ss-d">整理受众画像、内容偏好与适配建议</div>
           <ul class="sniff-steps" id="a-steps">
             ${M().SNIFF_STEPS.map((s, i) => `<li data-step="${i}"><span class="step-dot"></span>${s}</li>`).join('')}
           </ul>
@@ -56,9 +56,9 @@ window.CP = window.CP || {};
           </div>
         </div>
         <div class="sniff-status">
-          <div class="ss-t">${S().sniffDone ? '嗅探完成，报告已就绪' : '嗅探你的内容受众'}</div>
-          <div class="ss-d">${S().sniffDone ? '各平台读者画像已缓存，可点击「重新嗅探」获取最新快照。' : '系统会分析 4 个平台的读者年龄、职业、阅读习惯与内容偏好，生成适配建议。'}</div>
-          <button class="btn btn-primary" id="a-hero-scan">${ui().icon('radar', 15)} 开始嗅探</button>
+          <div class="ss-t">${S().sniffDone ? '画像基线已生成' : '查看平台受众画像'}</div>
+          <div class="ss-d">${S().sniffDone ? '各平台画像基线已就绪，改写时会按它调整标题、结构与语气。' : '系统会整理 4 个平台的读者年龄、职业、阅读习惯与内容偏好，生成适配建议。'}</div>
+          <button class="btn btn-primary" id="a-hero-scan">${ui().icon('radar', 15)} 生成画像</button>
         </div>`;
       hero.querySelector('#a-hero-scan').addEventListener('click', runScan);
     }
@@ -87,7 +87,7 @@ window.CP = window.CP || {};
     renderHero(root);
     renderReport(root);
     CP.updateSniffBadge();
-    ui().toast('4 个平台的受众分析完成', 'ok');
+    ui().toast('4 个平台的画像基线已生成', 'ok');
   }
 
   function renderReport(root) {
@@ -105,7 +105,7 @@ window.CP = window.CP || {};
             </div>`;
           }).join('')}
         </div>
-        <span class="badge badge-ok">${ui().icon('checkCircle', 12)} 实时快照 ${reports[0].snapshot.sampledAt}</span>
+        <span class="badge badge-ok">${ui().icon('checkCircle', 12)} 画像基线 · ${reports[0].snapshot.updatedAt}</span>
       </div>
       <div id="a-panel"></div>`;
 
@@ -126,7 +126,7 @@ window.CP = window.CP || {};
         <div class="card audience-report">
           <div class="card-head">
             <h3>读者画像</h3>
-            <span class="badge badge-gray more">${ui().icon('users', 12)} 快照热度 ${r.snapshot.heatIndex}</span>
+            <span class="badge badge-gray more">${ui().icon('users', 12)} 画像强度 ${r.snapshot.heatIndex}</span>
           </div>
           <div class="card-body">
             <div class="fact-grid">
@@ -187,8 +187,8 @@ window.CP = window.CP || {};
           </div>
           <div class="card-body" style="padding-top:0">
             <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <div class="fact" style="flex:1;min-width:120px"><div class="f-l">活跃时段</div><div class="f-v">${r.snapshot.activeTime.join(' · ')}</div></div>
-              <div class="fact" style="flex:1;min-width:120px"><div class="f-l">热度增长</div><div class="f-v" style="color:var(--ok)">↑ ${r.snapshot.growth}</div></div>
+              <div class="fact" style="flex:1;min-width:120px"><div class="f-l">建议发布时段</div><div class="f-v">${r.snapshot.activeTime.join(' · ')}</div></div>
+              <div class="fact" style="flex:1;min-width:120px"><div class="f-l">内容深度</div><div class="f-v">${r.snapshot.deepIndex}</div></div>
             </div>
           </div>
         </div>

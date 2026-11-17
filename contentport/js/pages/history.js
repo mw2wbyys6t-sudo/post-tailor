@@ -34,6 +34,7 @@ window.CP = window.CP || {};
           </select>
           <button class="btn btn-ghost" data-act="refresh">${ui().icon('refresh', 14)} 刷新</button>
           <button class="btn btn-ghost" data-act="pull-all">${ui().icon('gauge', 14)} 回拉全部数据</button>
+          <button class="btn btn-ghost" data-act="export-all">${ui().icon('download', 14)} 导出备份</button>
         </div>
         <div id="h-body" style="overflow-x:auto"></div>
       </div>`;
@@ -41,6 +42,11 @@ window.CP = window.CP || {};
     root.querySelector('[data-act="go-distribute"]').addEventListener('click', () => location.hash = '#/distribute');
     root.querySelector('[data-act="refresh"]').addEventListener('click', () => renderTable(root));
     root.querySelector('[data-act="pull-all"]').addEventListener('click', pullAll);
+    root.querySelector('[data-act="export-all"]').addEventListener('click', () => {
+      const stamp = new Date().toISOString().slice(0, 10);
+      ui().downloadFile(`ContentPort-backup-${stamp}.json`, CP.actions.exportAll(), 'application/json');
+      ui().toast('已导出全量备份（不含密钥）', 'ok');
+    });
     root.querySelector('#h-q').addEventListener('input', () => renderTable(root));
     root.querySelector('#h-status').addEventListener('change', () => renderTable(root));
 
@@ -52,26 +58,32 @@ window.CP = window.CP || {};
   function renderScheduled(root) {
     const panel = root.querySelector('#sched-panel');
     if (!panel) return;
-    const tasks = S().scheduledPublishes.filter(t => t.status === 'pending' || t.status === 'publishing');
+    const tasks = S().scheduledPublishes.filter(t => t.status === 'pending' || t.status === 'publishing' || t.status === 'missed');
     if (!tasks.length) { panel.innerHTML = ''; return; }
     panel.innerHTML = `
       <div class="card">
         <div class="card-head" style="border-bottom:1px solid var(--border);padding:12px 20px">
           <h3 style="font-size:14px">${ui().icon('clock', 14)} 定时发布队列</h3>
-          <span class="hint">到点自动发布到对应平台</span>
+          <span class="hint">到点自动发布；应用关闭期间不会执行，错过的任务会标记出来</span>
         </div>
         <div style="padding:4px 20px">
           ${tasks.map(t => {
             const p = M().PLATFORMS.find(x => x.id === t.platformId) || { name: '平台', color: '#888888' };
+            const badge = t.status === 'publishing'
+              ? '<span class="badge badge-warn">发布中…</span>'
+              : t.status === 'missed'
+                ? '<span class="badge badge-danger">已错过</span>'
+                : '<span class="badge badge-gray">等待中</span>';
             return `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px dashed var(--border)">
               <span class="dot" style="width:10px;height:10px;border-radius:50%;background:${p.color};flex:none"></span>
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ui().esc(t.title)}</div>
-                <div style="font-size:11.5px;color:var(--ink-3)">${p.name} · ${String(t.scheduledAt).replace('T', ' ')} · ${countdown(t.scheduledAt)}</div>
+                <div style="font-size:11.5px;color:var(--ink-3)">${p.name} · ${String(t.scheduledAt).replace('T', ' ')} · ${t.status === 'missed' ? ui().esc(t.error || '已错过') : countdown(t.scheduledAt)}</div>
               </div>
-              <span class="badge ${t.status === 'publishing' ? 'badge-warn' : 'badge-gray'}">${t.status === 'publishing' ? '发布中…' : '等待中'}</span>
+              ${badge}
               ${t.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-cancel="${t.id}">${ui().icon('x', 13)} 取消</button>` : ''}
+              ${t.status === 'missed' ? `<button class="btn btn-ghost btn-sm" data-dismiss="${t.id}">${ui().icon('x', 13)} 移除</button>` : ''}
             </div>`;
           }).join('')}
         </div>
@@ -81,6 +93,13 @@ window.CP = window.CP || {};
         CP.actions.removeScheduled(btn.dataset.cancel);
         renderScheduled(root);
         ui().toast('已取消定时任务', 'info');
+      });
+    });
+    panel.querySelectorAll('[data-dismiss]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        CP.actions.removeScheduled(btn.dataset.dismiss);
+        renderScheduled(root);
+        ui().toast('已移除错过的任务', 'info');
       });
     });
   }
@@ -132,16 +151,25 @@ window.CP = window.CP || {};
             const canPull = !!(h.postId || h.publishId) && h.platformId !== 'xhs';
             const statusText = h.remoteStatus ? `${h.status} · ${h.remoteStatus}` : h.status;
             const href = h.link ? (h.link.startsWith('http') ? h.link : 'https://' + h.link) : '';
+            // 未回拉到数据时不显示 0，避免被误解为真实阅读量为 0
+            const hasStats = !!h.lastSync || h.views > 0 || h.likes > 0 || h.comments > 0;
+            const noStatsHint = h.platformId === 'wechat'
+              ? '微信公众号需「图文分析」接口权限，暂不回拉阅读数据'
+              : '尚未回拉数据';
+            const stat = (v) => {
+              if (!hasStats) return `<span style="color:var(--ink-4)" title="${noStatsHint}">—</span>`;
+              return ui().fmtNum(Number(v) || 0);
+            };
             return `
             <tr>
-              <td class="t-title" title="${ui().esc(a ? a.title : '')}">${ui().esc(a ? a.title : '(已删除)')}</td>
+              <td class="t-title" title="${ui().esc(a ? a.title : '')}">${ui().esc(a ? a.title : '(已删除)')}${h.demo ? ' <span class="tag tag-default" style="font-size:10px">演示</span>' : ''}</td>
               <td><span style="display:inline-flex;align-items:center;gap:7px;font-weight:600"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:${p.color}"></span>${p.name}</span></td>
               <td>${h.accountNickname ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${ui().icon('user', 12)} ${ui().esc(h.accountNickname)}</span>` : '<span style="font-size:11.5px;color:var(--ink-4)">复制稿</span>'}</td>
               <td><span class="badge ${stCls}">${statusText}</span></td>
               <td class="t-score" style="color:${h.score >= 90 ? 'var(--ok)' : h.score >= 80 ? 'var(--amber)' : 'var(--ink-3)'}">${h.score || '—'}</td>
-              <td>${ui().fmtNum(h.views)}</td>
-              <td>${ui().fmtNum(h.likes)}</td>
-              <td>${ui().fmtNum(h.comments)}</td>
+              <td>${stat(h.views)}</td>
+              <td>${stat(h.likes)}</td>
+              <td>${stat(h.comments)}</td>
               <td style="font-size:12px;color:var(--ink-3)">${h.time}${h.lastSync ? `<div style="font-size:11px;color:var(--ink-4)">${h.lastSync} 更新</div>` : ''}</td>
               <td>
                 <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
