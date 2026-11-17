@@ -26,10 +26,10 @@ window.CP = window.CP || {};
       <div class="page-head fade-up">
         <div>
           <h2>文章库</h2>
-          <p>管理你的内容资产，选择一篇去分发。支持编辑、打标签与拖拽排序。</p>
+          <p>管理你的内容资产，选择一篇去分发。内置 Markdown / 富文本双模式编辑器，支持实时预览、目录与拖拽排序。</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-primary" data-act="import">${ui().icon('plus', 15)} 导入文章</button>
+          <button class="btn btn-primary" data-act="import">${ui().icon('plus', 15)} 新建 / 导入文章</button>
         </div>
       </div>
       <div class="toolbar fade-up" style="flex-wrap:wrap;gap:10px">
@@ -108,7 +108,7 @@ window.CP = window.CP || {};
         wrap.innerHTML = `<div class="card empty">
           <div class="empty-ic">${ui().icon('book', 26)}</div>
           <h4>没有匹配的文章</h4>
-          <p>换个关键词，或导入一篇新文章。</p>
+          <p>换个关键词，或新建一篇新文章。</p>
         </div>`;
         return;
       }
@@ -181,109 +181,13 @@ window.CP = window.CP || {};
     _t = setTimeout(fn, ms);
   }
 
-  /* ================= 编辑文章弹窗 ================= */
+  /* ================= 编辑 / 新建文章 ================= */
   function editArticleModal(aid) {
-    const a = CP.actions.getArticle(aid);
-    if (!a) return;
-    ui().openModal(`
-      <div class="modal-head">
-        <h3>编辑文章</h3>
-        <p>修改标题、分类、标签与正文，保存后同步更新字数与摘要。</p>
-      </div>
-      <div class="modal-body">
-        <label class="label">标题</label>
-        <input class="input" id="ed-title" value="${ui().esc(a.title)}" />
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-          <div>
-            <label class="label">分类</label>
-            <select class="select" id="ed-cat" style="width:100%">
-              ${CATS.map(c => `<option ${c === a.category ? 'selected' : ''}>${c}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label class="label">标签（逗号分隔）</label>
-            <input class="input" id="ed-tags" value="${ui().esc((a.tags || []).join(', '))}" placeholder="如：AI, 实战, 教程" />
-          </div>
-        </div>
-        <label class="label" style="margin-top:12px">正文（Markdown）</label>
-        <textarea class="textarea" id="ed-body" rows="10">${ui().esc(a.body || '')}</textarea>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" data-mclose>取消</button>
-        <button class="btn btn-primary" id="ed-save">${ui().icon('check', 15)} 保存</button>
-      </div>`, { width: 700 });
-
-    const modal = document.querySelector('.modal');
-    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
-    modal.querySelector('#ed-save').addEventListener('click', () => {
-      const title = document.getElementById('ed-title').value.trim();
-      const body = document.getElementById('ed-body').value.trim();
-      if (!title || !body) { ui().toast('标题与正文不能为空', 'warn'); return; }
-      const wordCount = body.replace(/\s/g, '').length;
-      const tags = document.getElementById('ed-tags').value.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 5);
-      CP.actions.updateArticle(aid, {
-        title,
-        category: document.getElementById('ed-cat').value,
-        tags,
-        body,
-        wordCount: Math.max(wordCount, 300),
-        summary: body.slice(0, 60) + '……',
-        readMin: Math.max(1, Math.round(wordCount / 400))
-      });
-      ui().toast('文章已保存', 'ok');
-      modal.closest('.modal-wrap').querySelector('[data-close]').click();
-      renderList(rootOf('library'));
-    });
+    CP.editor.open(aid, { onSaved: () => { if (location.hash.includes('library')) CP.refreshPage(); } });
   }
 
-  /* ================= 导入文章弹窗 ================= */
   CP.importArticle = function () {
-    ui().openModal(`
-      <div class="modal-head">
-        <h3>导入文章</h3>
-        <p>粘贴标题与 Markdown 正文，系统会自动识别字数与摘要。</p>
-      </div>
-      <div class="modal-body">
-        <label class="label">标题</label>
-        <input class="input" id="imp-title" placeholder="输入文章标题…" />
-        <label class="label" style="margin-top:14px">分类</label>
-        <select class="select" id="imp-cat">
-          ${CATS.map(c => `<option>${c}</option>`).join('')}
-        </select>
-        <label class="label" style="margin-top:14px">标签（逗号分隔，可选）</label>
-        <input class="input" id="imp-tags" placeholder="如：AI, 实战, 教程" />
-        <label class="label" style="margin-top:14px">正文（Markdown）</label>
-        <textarea class="textarea" id="imp-body" rows="8" placeholder="## 章节&#10;正文内容…"></textarea>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" data-mclose>取消</button>
-        <button class="btn btn-primary" id="imp-save">${ui().icon('check', 15)} 导入</button>
-      </div>`, { width: 620 });
-
-    const modal = document.querySelector('.modal');
-    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
-    modal.querySelector('#imp-save').addEventListener('click', async () => {
-      const title = document.getElementById('imp-title').value.trim();
-      const body = document.getElementById('imp-body').value.trim();
-      if (!title || !body) {
-        ui().toast('请填写标题与正文', 'warn');
-        return;
-      }
-      const btn = modal.querySelector('#imp-save');
-      btn.disabled = true;
-      btn.innerHTML = ui().icon('refresh', 15) + ' 导入中…';
-      const tags = document.getElementById('imp-tags').value.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 5);
-      const res = await CP.api.createArticle({
-        title,
-        category: document.getElementById('imp-cat').value,
-        body,
-        tags
-      });
-      ui().toast('文章已导入', 'ok');
-      modal.closest('.modal-wrap').querySelector('[data-close]').click();
-      // 若当前在文章库页，刷新
-      if (location.hash.includes('library')) renderList(rootOf('library'));
-    });
+    CP.editor.open(null, { onSaved: () => { if (location.hash.includes('library')) CP.refreshPage(); } });
   };
 
   /* ================= 文章详情抽屉 ================= */

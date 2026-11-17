@@ -44,7 +44,7 @@ window.CP = window.CP || {};
           <p>${portrait ? `欢迎回来，${ui().esc(portrait.nickname || '创作者')}。今天要继续分发内容吗？` : '完成用户画像后，分发将更懂你。'}</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-ghost" data-act="import">${ui().icon('upload', 15)} 导入文章</button>
+          <button class="btn btn-ghost" data-act="import">${ui().icon('upload', 15)} 新建文章</button>
           <button class="btn btn-primary" data-act="go-distribute">${ui().icon('send', 15)} 开始分发</button>
         </div>
       </div>
@@ -153,8 +153,8 @@ window.CP = window.CP || {};
               <span style="margin-left:auto;font-size:11px;opacity:.8">改写 → 发布</span>
             </button>
             <button class="btn btn-ghost btn-lg" data-act="import" style="justify-content:flex-start">
-              ${ui().icon('upload', 16)} 导入新文章
-              <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">支持粘贴 Markdown</span>
+              ${ui().icon('upload', 16)} 新建 / 导入文章
+              <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">Markdown / 富文本</span>
             </button>
             <button class="btn btn-ghost btn-lg" data-act="go-profile" style="justify-content:flex-start">
               ${ui().icon('user', 16)} ${portrait ? '更新用户画像' : '创建用户画像'}
