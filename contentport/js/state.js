@@ -13,7 +13,8 @@ window.CP = window.CP || {};
     settings: 'cp.settings.v1',
     sniffDone: 'cp.sniffDone.v1',
     scheduled: 'cp.scheduled.v1',
-    rewrites: 'cp.rewrites.v1'
+    rewrites: 'cp.rewrites.v1',
+    drafts: 'cp.drafts.v1'
   };
 
   function load(key, fallback) {
@@ -28,7 +29,10 @@ window.CP = window.CP || {};
   function save(key, val) {
     try {
       localStorage.setItem(key, JSON.stringify(val));
-    } catch (e) { /* ignore quota */ }
+      return true;
+    } catch (e) {
+      return false; // 配额不足等：由调用方决定是否提示
+    }
   }
 
   const state = {
@@ -42,6 +46,7 @@ window.CP = window.CP || {};
     sniffDone: load(LS.sniffDone, false),         // 是否完成过嗅探
     scheduledPublishes: load(LS.scheduled, []),   // 定时发布任务队列
     rewrites: load(LS.rewrites, {}),              // 改写稿持久化 { articleId: { platformId: result } }
+    drafts: load(LS.drafts, {}),                  // 编辑器草稿 { articleId|'new': { title, body, ... } }
     /* ---- 会话内 UI 状态 ---- */
     ui: {
       activeArticleId: null,                       // 分发工作台选中的文章
@@ -162,6 +167,32 @@ window.CP = window.CP || {};
     openRewriteFor(articleId) {
       state.ui.rewriteResults = { ...((state.rewrites[articleId]) || {}) };
       return state.ui.rewriteResults;
+    },
+    /* ---------- 编辑器草稿 ---------- */
+    getDraft(key) {
+      return (state.drafts && state.drafts[key]) || null;
+    },
+    saveDraft(key, draft) {
+      if (!state.drafts) state.drafts = {};
+      const prev = state.drafts[key];
+      state.drafts[key] = draft;
+      const ok = save(LS.drafts, state.drafts);
+      if (!ok) {
+        // 配额不足：回滚内存，避免出现"看起来存了其实没存"
+        if (prev) state.drafts[key] = prev;
+        else delete state.drafts[key];
+      }
+      return ok;
+    },
+    removeDraft(key) {
+      if (state.drafts && state.drafts[key]) {
+        delete state.drafts[key];
+        save(LS.drafts, state.drafts);
+      }
+    },
+    clearAllDrafts() {
+      state.drafts = {};
+      save(LS.drafts, state.drafts);
     },
     /* ---------- 演示数据 ---------- */
     hasDemoData() {

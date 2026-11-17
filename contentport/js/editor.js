@@ -47,7 +47,11 @@ window.CP = window.CP || {};
   }
 
   function countWords(text) {
-    return String(text || '').replace(/\s/g, '').length;
+    // 图片语法（含 base64 data URL）不计入字数，否则一张图会凭空多出几万字
+    const stripped = String(text || '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+    return stripped.replace(/\s/g, '').length;
   }
 
   function htmlToText(html) {
@@ -259,6 +263,66 @@ window.CP = window.CP || {};
     }));
   }
 
+  /* ---------------- 本地图片：读取 + 压缩 ---------------- */
+  const IMG_MAX_WIDTH = 1280;
+  const IMG_MAX_BYTES = 900 * 1024; // 单图压缩目标（base64 前的字节量级）
+
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('读取图片失败'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImageEl(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('图片解析失败'));
+      img.src = src;
+    });
+  }
+
+  /* 超过宽度或体积时等比缩小并重新编码；GIF 且体积不大时保留原图 */
+  async function compressImage(file, maxWidth = IMG_MAX_WIDTH, maxBytes = IMG_MAX_BYTES) {
+    const raw = await fileToDataUrl(file);
+    const isGif = /image\/gif/i.test(file.type);
+    if (isGif && raw.length < maxBytes) return { dataUrl: raw, width: 0, compressed: false };
+
+    const img = await loadImageEl(raw);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w) throw new Error('无法识别图片尺寸');
+
+    const needResize = w > maxWidth;
+    if (!needResize && raw.length <= maxBytes) return { dataUrl: raw, width: w, compressed: false };
+
+    const scale = needResize ? maxWidth / w : 1;
+    const cw = Math.max(1, Math.round(w * scale));
+    const ch = Math.max(1, Math.round(h * scale));
+
+    let quality = 0.85;
+    let out = raw;
+    for (let i = 0; i < 4; i++) {
+      const canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(img, 0, 0, cw, ch);
+      out = canvas.toDataURL('image/jpeg', quality);
+      if (out.length <= maxBytes) break;
+      quality = Math.max(0.45, quality - 0.15);
+    }
+    if (out.length > maxBytes * 1.6) {
+      throw new Error('图片过大，压缩后仍超过 1.5MB，请换一张更小的图');
+    }
+    return { dataUrl: out, width: cw, compressed: true };
+  }
+
   /* ---------------- 编辑器主体 ---------------- */
   CP.editor = {
     open(articleId, opts = {}) {
@@ -301,6 +365,12 @@ window.CP = window.CP || {};
           </aside>
 
           <section class="ed-paper">
+            <div class="ed-draft-bar" id="ed-draft-bar" style="display:none">
+              <span class="ed-draft-ic">${ui().icon('clock', 14)}</span>
+              <span class="ed-draft-txt" id="ed-draft-txt">发现未保存的草稿</span>
+              <button class="btn btn-soft btn-sm" id="ed-draft-restore">恢复草稿</button>
+              <button class="btn btn-ghost btn-sm" id="ed-draft-discard">忽略并删除</button>
+            </div>
             <input class="ed-title" id="ed-title" maxlength="100" placeholder="请输入文章标题（5～100个字）" />
             <div class="ed-title-hint" id="ed-title-hint"></div>
 
@@ -344,7 +414,9 @@ window.CP = window.CP || {};
         titleHint: root.querySelector('#ed-title-hint'),
         saveState: root.querySelector('#ed-save-state'),
         cat: root.querySelector('#ed-cat'),
-        tags: root.querySelector('#ed-tags')
+        tags: root.querySelector('#ed-tags'),
+        draftBar: root.querySelector('#ed-draft-bar'),
+        draftTxt: root.querySelector('#ed-draft-txt')
       };
 
       el.title.value = article ? article.title : '';
@@ -386,10 +458,20 @@ window.CP = window.CP || {};
               <button class="ed-view ${mdView === 'split' ? 'on' : ''}" data-view="split">双栏</button>
               <button class="ed-view ${mdView === 'preview' ? 'on' : ''}" data-view="preview">预览</button>
             </div>
+            <span class="ed-sep"></span>
+            <div class="ed-tools">
+              <button class="ed-tool" data-mdtool="bold" title="加粗"><span class="ed-bold">B</span></button>
+              <button class="ed-tool" data-mdtool="ul" title="无序列表">≡</button>
+              <button class="ed-tool" data-mdtool="quote" title="引用">❝</button>
+              <button class="ed-tool" data-mdtool="code" title="代码块">&lt;/&gt;</button>
+              <button class="ed-tool" data-mdtool="image" title="图片">${ui().icon('upload', 14)}</button>
+              <button class="ed-tool" data-mdtool="link" title="链接">${ui().icon('link', 14)}</button>
+            </div>
             <span class="ed-tool-hint">Markdown 语法：## 小标题 · **加粗** · - 列表 · > 引用 · \`\`\` 代码块</span>`;
           el.toolbar.querySelectorAll('[data-view]').forEach(b => {
             b.addEventListener('click', () => { mdView = b.dataset.view; applyMode(); });
           });
+          bindMdTools();
           return;
         }
         el.toolbar.innerHTML = `
@@ -426,6 +508,66 @@ window.CP = window.CP || {};
         });
       }
 
+      /* Markdown 工具栏：在光标处插入语法 */
+      function mdSurround(prefix, suffix, placeholder) {
+        const ta = el.mdSrc;
+        const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+        const e = ta.selectionEnd == null ? s : ta.selectionEnd;
+        const sel = ta.value.slice(s, e) || placeholder || '文本';
+        ta.value = ta.value.slice(0, s) + prefix + sel + suffix + ta.value.slice(e);
+        const from = s + prefix.length;
+        ta.focus();
+        ta.setSelectionRange(from, from + sel.length);
+        renderPreview();
+        onEdit();
+      }
+
+      function mdLine(prefix) {
+        const ta = el.mdSrc;
+        const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+        const lineStart = ta.value.lastIndexOf('\n', s - 1) + 1;
+        ta.value = ta.value.slice(0, lineStart) + prefix + ta.value.slice(lineStart);
+        ta.focus();
+        const pos = s + prefix.length;
+        ta.setSelectionRange(pos, pos);
+        renderPreview();
+        onEdit();
+      }
+
+      function mdInsertText(text) {
+        const ta = el.mdSrc;
+        const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+        const e = ta.selectionEnd == null ? s : ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
+        ta.focus();
+        const pos = s + text.length;
+        ta.setSelectionRange(pos, pos);
+        renderPreview();
+        onEdit();
+      }
+
+      function bindMdTools() {
+        el.toolbar.querySelectorAll('[data-mdtool]').forEach(btn => {
+          btn.addEventListener('mousedown', e => e.preventDefault());
+          btn.addEventListener('click', () => {
+            const k = btn.dataset.mdtool;
+            switch (k) {
+              case 'image': openImageDialog(); break;
+              case 'link': {
+                const url = window.prompt('链接地址（https://…）');
+                if (url) mdSurround('[', `](${url})`, '链接文字');
+                break;
+              }
+              case 'bold': mdSurround('**', '**'); break;
+              case 'ul': mdLine('- '); break;
+              case 'quote': mdLine('> '); break;
+              case 'code': mdInsertText('\n```\n\n```\n'); break;
+              default: break;
+            }
+          });
+        });
+      }
+
       function runTool(k) {
         el.rich.focus();
         const exec = (cmd, val) => { document.execCommand(cmd, false, val); onEdit(); };
@@ -443,11 +585,7 @@ window.CP = window.CP || {};
           case 'bg': pickColor('#FFF3C4', c => exec('hiliteColor', c)); break;
           case 'code': exec('insertHTML', '<pre><code>// 代码</code></pre><p><br></p>'); break;
           case 'table': exec('insertHTML', '<table><tbody><tr><td>列 1</td><td>列 2</td><td>列 3</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>'); break;
-          case 'image': {
-            const url = window.prompt('图片地址（https://…）');
-            if (url) exec('insertHTML', `<p><img src="${esc(url)}" alt="" /></p>`);
-            break;
-          }
+          case 'image': openImageDialog(); break;
           case 'link': {
             const url = window.prompt('链接地址（https://…）');
             if (url) exec('createLink', url);
@@ -501,7 +639,182 @@ window.CP = window.CP || {};
       function markDirty() {
         dirty = true;
         el.saveState.textContent = '未保存';
+        el.saveState.classList.remove('saved-draft');
         el.saveState.classList.add('dirty');
+        scheduleDraft();
+      }
+
+      /* ---------- 自动保存草稿 ---------- */
+      let draftTimer = null;
+      const draftKey = isNew ? 'new' : articleId;
+
+      function draftPayload() {
+        return {
+          title: el.title.value,
+          body: currentMd(),
+          mode,
+          category: el.cat.value,
+          tags: el.tags.value,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      function scheduleDraft() {
+        if (draftTimer) clearTimeout(draftTimer);
+        draftTimer = setTimeout(saveDraftNow, 1200);
+      }
+
+      function saveDraftNow() {
+        const ok = CP.actions.saveDraft(draftKey, draftPayload());
+        if (ok) {
+          el.saveState.textContent = '草稿已自动保存 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+          el.saveState.classList.remove('dirty');
+          el.saveState.classList.add('saved-draft');
+        } else {
+          el.saveState.textContent = '草稿保存失败（存储空间不足）';
+          el.saveState.classList.remove('saved-draft');
+          el.saveState.classList.add('dirty');
+        }
+        return ok;
+      }
+
+      let pendingDraft = null;
+      function showDraftBar(draft) {
+        pendingDraft = draft;
+        const t = draft.updatedAt ? new Date(draft.updatedAt) : null;
+        const when = t ? t.toLocaleString('zh-CN', { hour12: false }) : '刚才';
+        el.draftTxt.textContent = `发现 ${when} 的未保存草稿（${draft.mode === 'rich' ? '富文本' : 'Markdown'}）`;
+        el.draftBar.style.display = '';
+      }
+
+      function applyDraft(draft) {
+        el.title.value = draft.title || '';
+        if (draft.category) el.cat.value = draft.category;
+        if (draft.tags != null) el.tags.value = draft.tags;
+        el.mdSrc.value = draft.body || '';
+        el.rich.innerHTML = mdToHtml(draft.body || '');
+        el.rich.setAttribute('data-synced', '1');
+        if (draft.mode && draft.mode !== mode) {
+          mode = draft.mode;
+          applyMode();
+        } else {
+          renderPreview();
+          updateCount();
+        }
+        renderPreview();
+        updateCount();
+        dirty = true;
+        el.saveState.textContent = '已恢复草稿（未保存）';
+        el.saveState.classList.add('dirty');
+      }
+
+      root.querySelector('#ed-draft-restore').addEventListener('click', () => {
+        if (!pendingDraft) return;
+        applyDraft(pendingDraft);
+        el.draftBar.style.display = 'none';
+        pendingDraft = null;
+        ui().toast('已恢复草稿，记得点击保存', 'ok');
+      });
+      root.querySelector('#ed-draft-discard').addEventListener('click', () => {
+        CP.actions.removeDraft(draftKey);
+        el.draftBar.style.display = 'none';
+        pendingDraft = null;
+        ui().toast('已丢弃该草稿', 'info');
+      });
+
+      /* ---------- 插入图片 ---------- */
+      let savedRange = null;
+      function captureRange() {
+        if (mode !== 'rich') return;
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
+      }
+      function restoreRange() {
+        if (!savedRange) return;
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+
+      function insertImage(src, alt) {
+        const text = alt || '图片';
+        if (mode === 'rich') {
+          el.rich.focus();
+          restoreRange();
+          document.execCommand('insertHTML', false, `<p><img src="${esc(src)}" alt="${esc(text)}" /></p><p><br></p>`);
+          onEdit();
+          return;
+        }
+        const ta = el.mdSrc;
+        const start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+        const end = ta.selectionEnd == null ? start : ta.selectionEnd;
+        const before = ta.value.slice(0, start);
+        const after = ta.value.slice(end);
+        const pad = before && !/\n$/.test(before) ? '\n\n' : '';
+        const md = `![${text}](${src})`;
+        ta.value = before + pad + md + '\n\n' + after;
+        const pos = (before + pad + md).length;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
+        renderPreview();
+        onEdit();
+      }
+
+      function openImageDialog() {
+        captureRange();
+        const { close } = ui().openModal(`
+          <div class="modal-head">
+            <h3>插入图片</h3>
+            <p>可上传本地图片（自动压缩）或填写图片链接。</p>
+          </div>
+          <div class="modal-body">
+            <label class="label">上传本地图片</label>
+            <input class="input" type="file" id="img-file" accept="image/*" />
+            <div class="hint">JPG / PNG / WebP / GIF。宽度超过 1280 会自动等比缩小，单图压缩到约 900KB 内。</div>
+            <div class="divider"></div>
+            <label class="label">或填写图片链接</label>
+            <input class="input" id="img-url" placeholder="https://…" />
+            <label class="label" style="margin-top:10px">图片描述（可选）</label>
+            <input class="input" id="img-alt" placeholder="用于无障碍与 Markdown alt" />
+            <div class="hint" id="img-status"></div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost" data-mclose>取消</button>
+            <button class="btn btn-primary" id="img-insert">插入图片</button>
+          </div>`, { width: 520 });
+
+        const modal = document.querySelector('.modal');
+        const status = modal.querySelector('#img-status');
+        modal.querySelector('[data-mclose]').addEventListener('click', close);
+        const btn = modal.querySelector('#img-insert');
+
+        btn.addEventListener('click', async () => {
+          const file = modal.querySelector('#img-file').files[0];
+          const url = modal.querySelector('#img-url').value.trim();
+          const alt = modal.querySelector('#img-alt').value.trim();
+          if (!file && !url) { ui().toast('请选择本地图片或填写链接', 'warn'); return; }
+
+          if (!file) {
+            if (!/^(https?:|data:image\/)/i.test(url)) { ui().toast('链接需以 http(s) 开头，或为 data:image', 'warn'); return; }
+            insertImage(url, alt);
+            close();
+            return;
+          }
+
+          btn.disabled = true;
+          btn.innerHTML = ui().icon('refresh', 15) + ' 处理中…';
+          status.textContent = '正在压缩图片…';
+          try {
+            const out = await compressImage(file);
+            insertImage(out.dataUrl, alt || file.name.replace(/\.[^.]+$/, ''));
+            ui().toast(out.compressed ? '已压缩并插入图片' : '图片已插入', 'ok');
+            close();
+          } catch (e) {
+            status.innerHTML = `<span style="color:var(--danger)">${esc(e.message || '图片处理失败')}</span>`;
+            btn.disabled = false;
+            btn.innerHTML = '插入图片';
+          }
+        });
       }
 
       /* 富文本被编辑：标记为未同步，避免切模式时覆盖用户改动 */
@@ -650,8 +963,11 @@ window.CP = window.CP || {};
 
       function done(id) {
         dirty = false;
+        if (draftTimer) clearTimeout(draftTimer);
+        CP.actions.removeDraft(draftKey);
+        el.draftBar.style.display = 'none';
         el.saveState.textContent = '已保存';
-        el.saveState.classList.remove('dirty');
+        el.saveState.classList.remove('dirty', 'saved-draft');
         close(true);
         if (typeof opts.onSaved === 'function') opts.onSaved(id);
         else if (location.hash.includes('library') && CP.refreshPage) CP.refreshPage();
@@ -659,12 +975,21 @@ window.CP = window.CP || {};
 
       function close(force) {
         if (!force && dirty) {
-          if (!window.confirm('还有未保存的修改，确定关闭吗？')) return;
+          if (!window.confirm('还有未保存的修改，确定关闭吗？（草稿已自动保存，下次可恢复）')) return;
         }
+        if (draftTimer) clearTimeout(draftTimer);
         document.removeEventListener('keydown', escHandler);
         root.remove();
         document.body.classList.remove('editing');
         if (typeof opts.onClose === 'function') opts.onClose();
+      }
+
+      /* 打开时若存在未保存草稿，给出恢复提示（不自动覆盖当前内容） */
+      const existingDraft = CP.actions.getDraft(draftKey);
+      const savedBody = article ? (article.body || '') : '';
+      const savedTitle = article ? (article.title || '') : '';
+      if (existingDraft && (existingDraft.body !== savedBody || existingDraft.title !== savedTitle)) {
+        showDraftBar(existingDraft);
       }
 
       applyMode();
