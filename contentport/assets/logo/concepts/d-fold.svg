@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="方向 D：折页">
+  <title>方向 D · 折页</title>
+  <!-- 概念：一条纸带被反复折叠，仍是同一张纸 —— 一稿折出多个面；
+       折面明暗交替表达「同一内容的不同形态」 -->
+  <path d="M128 0 H896 L1024 128 V896 L896 1024 H128 L0 896 V128 Z" fill="#16211F" />
+
+  <g>
+    <!-- 面 1（受光） -->
+    <path d="M212 392 L410 302 L410 594 L212 684 Z" fill="#F5F2EB" />
+    <!-- 面 2（背光） -->
+    <path d="M410 302 L608 392 L608 684 L410 594 Z" fill="#BFD4CD" />
+    <!-- 面 3（受光） -->
+    <path d="M608 392 L806 302 L806 594 L608 684 Z" fill="#F5F2EB" />
+  </g>
+
+  <!-- 折边：一道琥珀细线，标出「接下来还要继续折」的方向 -->
+  <path d="M806 302 L806 594" stroke="#E8A33D" stroke-width="20" stroke-linecap="round" />
+</svg>

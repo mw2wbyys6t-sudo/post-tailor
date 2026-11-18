@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 400" width="1360" height="400" role="img" aria-label="OmniDraft 一稿千面 横版标志">
+  <title>OmniDraft · 一稿千面</title>
+
+  <!-- 标记：同 icon 的折页，按 0.28 缩放 -->
+  <g transform="translate(64 56) scale(0.28)">
+    <path d="M128 0 H896 L1024 128 V896 L896 1024 H128 L0 896 V128 Z" fill="#16211F" />
+    <path d="M212 392 L410 302 L410 594 L212 684 Z" fill="#F5F2EB" />
+    <path d="M410 302 L608 392 L608 684 L410 594 Z" fill="#BFD4CD" />
+    <path d="M608 392 L806 302 L806 594 L608 684 Z" fill="#F5F2EB" />
+    <path d="M806 302 L806 594" stroke="#E8A33D" stroke-width="20" stroke-linecap="round" />
+  </g>
+
+  <g font-family="'Noto Serif SC','Source Han Serif SC','Songti SC',Georgia,serif">
+    <text x="392" y="206" font-size="104" font-weight="700" fill="#23262E" letter-spacing="1">OmniDraft</text>
+    <text x="396" y="268" font-size="34" fill="#555A66" letter-spacing="6" font-family="'PingFang SC','Microsoft YaHei',sans-serif">一 稿 千 面</text>
+    <line x1="396" y1="296" x2="1180" y2="296" stroke="#E4DED2" stroke-width="2" />
+    <text x="396" y="338" font-size="24" fill="#8B8F9B" font-family="'PingFang SC','Microsoft YaHei',sans-serif">一篇文章 · 多平台原生版本 · 发布与数据回拉</text>
+  </g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="方向 A：一行四道">
+  <title>方向 A · 一行四道</title>
+  <!-- 概念：一条稿线（横杠）向四个落点分流，每条落点长度不同 —— 一稿分发给长度不同的平台 -->
+  <path d="M128 0 H896 L1024 128 V896 L896 1024 H128 L0 896 V128 Z" fill="#16211F" />
+
+  <!-- 稿：一条实心横杠 -->
+  <rect x="212" y="286" width="600" height="72" rx="36" fill="#F5F2EB" />
+
+  <!-- 分流：四道竖向稿轨，长度递减 -->
+  <g>
+    <rect x="276" y="410" width="52" height="374" rx="26" fill="#E8A33D" />
+    <rect x="430" y="410" width="52" height="316" rx="26" fill="#F5F2EB" opacity="0.86" />
+    <rect x="584" y="410" width="52" height="252" rx="26" fill="#F5F2EB" opacity="0.6" />
+    <rect x="738" y="410" width="52" height="176" rx="26" fill="#F5F2EB" opacity="0.34" />
+  </g>
+</svg>

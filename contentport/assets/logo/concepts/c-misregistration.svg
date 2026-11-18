@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="方向 C：套印偏移">
+  <title>方向 C · 套印偏移</title>
+  <!-- 概念：同一块印刷版重复压印多次，每次略有偏移 —— 一稿千面；
+       角落的套准符号（register mark）是印刷行业的行内记号 -->
+  <path d="M128 0 H896 L1024 128 V896 L896 1024 H128 L0 896 V128 Z" fill="#F7F4EC" />
+
+  <g fill="none" transform="translate(-58 -118)">
+    <!-- 三次压印：青 → 琥珀 → 墨 -->
+    <path d="M274 506 L346 434 H682 L754 506 V842 L682 914 H346 L274 842 Z"
+          stroke="#0F766E" stroke-opacity="0.34" stroke-width="34" stroke-linejoin="round" />
+    <path d="M302 484 L374 412 H710 L782 484 V820 L710 892 H374 L302 820 Z"
+          stroke="#C27803" stroke-width="34" stroke-linejoin="round" />
+    <path d="M330 462 L402 390 H738 L810 462 V798 L738 870 H402 L330 798 Z"
+          stroke="#16211F" stroke-width="42" stroke-linejoin="round" />
+  </g>
+
+  <!-- 套准符号 -->
+  <g stroke="#16211F" stroke-width="16" stroke-linecap="round">
+    <circle cx="806" cy="252" r="40" fill="none" />
+    <path d="M806 186 V318" />
+    <path d="M740 252 H872" />
+  </g>
+</svg>

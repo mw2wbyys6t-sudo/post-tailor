@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>OmniDraft · 标志方向对比</title>
+<link rel="icon" href="d-32.png" />
+<style>
+  :root{--bg:#F5F2EB;--surface:#fff;--ink:#23262E;--ink2:#555A66;--ink3:#8B8F9B;--border:#E4DED2;--primary:#0F766E;--amber:#C27803;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:52px 60px 90px;line-height:1.7}
+  h1{font-family:"Noto Serif SC","Songti SC",Georgia,serif;font-size:28px}
+  .sub{color:var(--ink3);font-size:13px;margin-top:6px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(320px,1fr));gap:22px;margin-top:32px}
+  .item{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px 22px 18px;position:relative}
+  .item.rec{border-color:var(--primary);box-shadow:0 0 0 3px rgba(15,118,110,.1)}
+  .tag{position:absolute;top:14px;right:16px;font-size:11px;font-weight:700;letter-spacing:.08em;color:#fff;background:var(--primary);border-radius:999px;padding:3px 10px}
+  .sizes{display:flex;align-items:flex-end;gap:20px;margin-bottom:14px}
+  .sizes img{display:block}
+  .sizes .s{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .sizes span{font-size:10.5px;color:var(--ink3)}
+  h2{font-size:15px;margin-bottom:4px}
+  .why{font-size:12.5px;color:var(--ink2)}
+  .dark{background:#0B1F1C;border-color:#123B35;border-radius:12px;padding:12px;display:flex;align-items:center;gap:14px;margin-top:14px}
+  .dark span{font-size:11px;color:#7EA8A1}
+  .foot{margin-top:30px;font-size:12.5px;color:var(--ink3)}
+  code{font-family:Consolas,Menlo,monospace;font-size:11.5px;background:#EDE8DD;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+  <h1>标志方向对比</h1>
+  <div class="sub">四个方向均为矢量源文件，可按需继续细化；每组展示 256 / 64 / 32 三档与深色底效果。</div>
+
+  <div class="grid">
+    <div class="item">
+      <div class="sizes">
+        <div class="s"><img src="a-512.png" width="256" height="256" alt="A 256"><span>256</span></div>
+        <div class="s"><img src="a-64.png" width="64" height="64" alt="A 64"><span>64</span></div>
+        <div class="s"><img src="a-64.png" width="32" height="32" alt="A 32"><span>32</span></div>
+      </div>
+      <h2>A · 一行四道</h2>
+      <div class="why">一条稿线分出四条长短不同的稿轨，直白表达「同一篇，投到长度不同的平台」。最克制，但接近图表语言。</div>
+      <div class="dark"><img src="a-512.png" width="56" height="56" alt="A 深色"><span>深色底表现稳定</span></div>
+    </div>
+
+    <div class="item">
+      <div class="sizes">
+        <div class="s"><img src="b-512.png" width="256" height="256" alt="B 256"><span>256</span></div>
+        <div class="s"><img src="b-64.png" width="64" height="64" alt="B 64"><span>64</span></div>
+        <div class="s"><img src="b-64.png" width="32" height="32" alt="B 32"><span>32</span></div>
+      </div>
+      <h2>B · 一稿分流</h2>
+      <div class="why">横杠加三支不等长分叉，取自「千」的骨架；纸底 + 墨 + 琥珀的印刷配色在小尺寸下辨识度最好。</div>
+      <div class="dark"><img src="b-512.png" width="56" height="56" alt="B 深色"><span>纸底图标在深色坞里偏亮，需要描边</span></div>
+    </div>
+
+    <div class="item">
+      <div class="sizes">
+        <div class="s"><img src="c-512.png" width="256" height="256" alt="C 256"><span>256</span></div>
+        <div class="s"><img src="c-64.png" width="64" height="64" alt="C 64"><span>64</span></div>
+        <div class="s"><img src="c-64.png" width="32" height="32" alt="C 32"><span>32</span></div>
+      </div>
+      <h2>C · 套印偏移</h2>
+      <div class="why">同一块印版压印三次、逐次错位，配一个印刷套准符号。概念最「内行」，但 32px 下层次会糊。</div>
+      <div class="dark"><img src="c-512.png" width="56" height="56" alt="C 深色"><span>细节依赖大尺寸</span></div>
+    </div>
+
+    <div class="item rec">
+      <span class="tag">推荐</span>
+      <div class="sizes">
+        <div class="s"><img src="d-512.png" width="256" height="256" alt="D 256"><span>256</span></div>
+        <div class="s"><img src="d-64.png" width="64" height="64" alt="D 64"><span>64</span></div>
+        <div class="s"><img src="d-32.png" width="32" height="32" alt="D 32"><span>32</span></div>
+      </div>
+      <h2>D · 折页</h2>
+      <div class="why">一条纸带反复对折：还是同一张纸，却折出多个面。明暗交替表达同一内容的不同形态，轮廓独特、不撞常见的「叠纸 + 星芒」。</div>
+      <div class="dark"><img src="d-512.png" width="56" height="56" alt="D 深色"><span>深色底对比最佳</span></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    横版组合（方向 D）：<code>d-lockup.svg</code> · 源文件：<code>a-one-to-four.svg</code> / <code>b-qian-fork.svg</code> / <code>c-misregistration.svg</code> / <code>d-fold.svg</code>
+  </div>
+</body>
+</html>
