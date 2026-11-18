@@ -205,10 +205,13 @@ contentport/
 ```bash
 cd contentport
 npm run eval            # 新旧引擎对比 + 阈值检查（不达标退出码 1）
-npm run eval:ai         # 真实模型评测（需 AI_API_KEY / AI_BASE_URL / AI_MODEL）
+npm run eval:ai         # 真实模型评测（需 AI_API_KEY / DEEPSEEK_API_KEY / AI_BASE_URL / AI_MODEL）
+node eval/run.js --ai --cases=case-rag,case-short --platforms=csdn   # 小样本真实模型冒烟
 npm run eval:baseline   # 刷新本地基线
 npm run eval:calibrate -- --file=./history.json   # 用真实回拉数据做相关性校准
 ```
+
+真实模型评测（`--ai`）看绝对分与 AI 成功率，不再用「相对旧引擎增益」作为门槛；回退本地引擎超过一半才会判失败。
 
 ## 技术栈
 

@@ -32,6 +32,7 @@ function arg(name, fallback) {
 }
 const ENGINE = String(arg('engine', 'both'));
 const PLATFORMS = String(arg('platforms', 'csdn,wechat,xhs,zhihu')).split(',').map(s => s.trim()).filter(Boolean);
+const ONLY_CASES = String(arg('cases', '')).split(',').map(s => s.trim()).filter(Boolean);
 const USE_AI = !!arg('ai', false);
 const AS_JSON = !!arg('json', false);
 const FAIL_UNDER = Number(arg('fail-under', 85));
@@ -81,7 +82,7 @@ function pct(n) {
 }
 
 async function evaluate() {
-  const cases = readCases();
+  const cases = readCases().filter(c => !ONLY_CASES.length || ONLY_CASES.includes(c.id));
   const chat = USE_AI ? aiChat() : null;
   const rows = [];
   for (const article of cases) {
@@ -98,7 +99,16 @@ async function evaluate() {
       }
       if (ENGINE !== 'old') {
         const out = await PIPE.run(article, pid, { analysis, aiChat: chat });
-        row.new = { total: out.score, dims: out.quality.dims, metrics: out.quality.metrics, engine: out.engine, aiCalls: out.algorithm.aiCalls, issues: out.quality.issues.length };
+        row.new = {
+          total: out.score,
+          dims: out.quality.dims,
+          metrics: out.quality.metrics,
+          engine: out.engine,
+          usedAI: !!out.aiGenerated,
+          aiCalls: out.algorithm.aiCalls,
+          aiErrors: out.algorithm.errors || [],
+          issues: out.quality.issues.length
+        };
       }
       rows.push(row);
     }
@@ -124,6 +134,9 @@ function summarize(rows) {
       dims,
       p0Count: rs.filter(r => r.new && r.new.metrics.p0).length,
       lengthOk: rs.filter(r => r.new && r.new.dims.L >= 80).length,
+      aiUsed: rs.filter(r => r.new && r.new.usedAI).length,
+      aiFallback: rs.filter(r => r.new && !r.new.usedAI).length,
+      aiErrors: rs.reduce((n, r) => n + (r.new && r.new.aiErrors ? r.new.aiErrors.length : 0), 0),
       aiCalls: rs.reduce((n, r) => n + (r.new ? r.new.aiCalls || 0 : 0), 0)
     };
   });
@@ -141,7 +154,9 @@ function check(summary, rows) {
     overall += s.newAvg * s.n;
     count += s.n;
     if (s.newAvg < FAIL_UNDER) failures.push(`${pid} 均值 ${s.newAvg} < ${FAIL_UNDER}`);
-    if (s.gain != null && s.gain < 10) failures.push(`${pid} 相对旧引擎增益 ${s.gain} < 10`);
+    // 增益门槛是给「本地新引擎 vs 旧引擎」用的；真实模型评测看绝对分与成功率
+    if (!USE_AI && s.gain != null && s.gain < 10) failures.push(`${pid} 相对旧引擎增益 ${s.gain} < 10`);
+    if (USE_AI && s.aiFallback > Math.ceil(s.n / 2)) failures.push(`${pid} 有 ${s.aiFallback}/${s.n} 次回退本地引擎，模型输出质量需排查`);
     if (s.dims.M < 95) failures.push(`${pid} 合规均值 ${s.dims.M} < 95`);
     if (s.dims.C < 80) failures.push(`${pid} 信息覆盖均值 ${s.dims.C} < 80`);
     if (s.p0Count > 0) failures.push(`${pid} 存在 ${s.p0Count} 条 P0 违规`);
@@ -197,7 +212,10 @@ function printSummary(summary, result) {
       pid.padEnd(8) + `旧 ${s.oldAvg}`.padEnd(10) + `新 ${s.newAvg}`.padEnd(10) +
       `增益 ${s.gain == null ? '-' : s.gain}`.padEnd(10) +
       `C/S/L/T/O/R/M ${s.dims.C}/${s.dims.S}/${s.dims.L}/${s.dims.T}/${s.dims.O}/${s.dims.R}/${s.dims.M}`.padEnd(34) +
-      `长度合规 ${s.lengthOk}/${s.n}` + (s.aiCalls ? ` · AI ${s.aiCalls} 次` : '')
+      `长度合规 ${s.lengthOk}/${s.n}` +
+      (s.aiCalls
+        ? ` · AI 成功 ${s.aiUsed}/${s.n} · AI 调用 ${s.aiCalls} 次${s.aiFallback ? ` · 回退 ${s.aiFallback}` : ''}${s.aiErrors ? ` · 错误 ${s.aiErrors}` : ''}`
+        : '')
     );
   });
   console.log(`\n整体均值：${result.overallAvg}`);
