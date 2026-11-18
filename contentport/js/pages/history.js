@@ -32,6 +32,12 @@ window.CP = window.CP || {};
           <select class="select" id="h-status" style="width:auto">
             ${STATUSES.map(s => `<option>${s}</option>`).join('')}
           </select>
+          <select class="select" id="h-plat" style="width:auto">
+            <option value="all">全部平台</option>
+            ${M().PLATFORMS.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost" data-act="clear-filter">${ui().icon('x', 14)} 清空筛选</button>
+          <span class="hint" id="h-count" style="margin:0 0 0 auto"></span>
           <button class="btn btn-ghost" data-act="refresh">${ui().icon('refresh', 14)} 刷新</button>
           <button class="btn btn-ghost" data-act="pull-all">${ui().icon('gauge', 14)} 回拉全部数据</button>
           <button class="btn btn-ghost" data-act="export-all">${ui().icon('download', 14)} 导出备份</button>
@@ -49,6 +55,13 @@ window.CP = window.CP || {};
     });
     root.querySelector('#h-q').addEventListener('input', () => renderTable(root));
     root.querySelector('#h-status').addEventListener('change', () => renderTable(root));
+    root.querySelector('#h-plat').addEventListener('change', () => renderTable(root));
+    root.querySelector('[data-act="clear-filter"]').addEventListener('click', () => {
+      root.querySelector('#h-q').value = '';
+      root.querySelector('#h-status').value = '全部';
+      root.querySelector('#h-plat').value = 'all';
+      renderTable(root);
+    });
 
     renderScheduled(root);
     renderTable(root);
@@ -119,20 +132,25 @@ window.CP = window.CP || {};
   function renderTable(root) {
     const q = root.querySelector('#h-q').value.toLowerCase();
     const status = root.querySelector('#h-status').value;
+    const plat = root.querySelector('#h-plat').value;
     const list = S().history.filter(h => {
       const a = CP.actions.getArticle(h.articleId);
       const title = a ? a.title : '';
       const okQ = !q || title.toLowerCase().includes(q);
       const okS = status === '全部' || h.status === status;
-      return okQ && okS;
+      const okP = plat === 'all' || h.platformId === plat;
+      return okQ && okS && okP;
     });
+    const countEl = root.querySelector('#h-count');
+    if (countEl) countEl.textContent = `共 ${list.length} 条`;
 
     const body = root.querySelector('#h-body');
     if (!list.length) {
+      const filtered = !!(q || status !== '全部' || plat !== 'all');
       body.innerHTML = `<div class="empty" style="padding:50px 20px">
         <div class="empty-ic">${ui().icon('clock', 26)}</div>
-        <h4>暂无发布记录</h4>
-        <p>去分发工作台发布第一篇文章吧。</p>
+        <h4>${filtered ? '没有匹配的发布记录' : '暂无发布记录'}</h4>
+        <p>${filtered ? '换个关键词或平台试试，也可以清空筛选。' : '去分发工作台发布第一篇文章吧。'}</p>
       </div>`;
       return;
     }

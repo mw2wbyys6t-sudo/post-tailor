@@ -100,7 +100,7 @@ window.CP = window.CP || {};
   }
 
   /* ---------- 二次确认（危险操作前使用） ---------- */
-  function confirm({ title = '请确认', message = '', confirmText = '确认', cancelText = '取消', danger = false } = {}) {
+  function confirm({ title = '请确认', message = '', confirmText = '确认', cancelText = '取消', danger = false, stack = false } = {}) {
     return new Promise(resolve => {
       let ok = false;
       const { close, rootEl } = openModal(`
@@ -113,7 +113,7 @@ window.CP = window.CP || {};
         <div class="modal-foot">
           <button class="btn btn-ghost" data-mclose>${esc(cancelText)}</button>
           <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="cf-ok">${esc(confirmText)}</button>
-        </div>`, { width: 460, onClose: () => resolve(ok) });
+        </div>`, { width: 460, stack, onClose: () => resolve(ok) });
       const modal = rootEl.querySelector('.modal');
       modal.querySelector('[data-mclose]').addEventListener('click', () => { ok = false; close(); });
       modal.querySelector('#cf-ok').addEventListener('click', () => { ok = true; close(); });

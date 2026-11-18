@@ -325,11 +325,11 @@ window.CP = window.CP || {};
        走 engine/pipeline：内容分析 → 平台规划 →（AI 计划/成稿/
        质检修复）→ 本地质检；无 AI 时确定性成稿兜底
        -------------------------------------------------------- */
-    async rewriteArticle(articleId, platformIds) {
+    async rewriteArticle(articleId, platformIds, { localOnly = false } = {}) {
       const article = CP.actions.getArticle(articleId);
       if (!article) return { code: 1, msg: '文章不存在' };
 
-      const aiReady = !!(await vault.getAiKey()) && !!S().settings.ai.baseUrl;
+      const aiReady = !localOnly && !!(await vault.getAiKey()) && !!S().settings.ai.baseUrl;
       const pipeline = CP.engine && CP.engine.pipeline;
       const results = {};
       const errors = {};

@@ -116,6 +116,25 @@ window.CP = window.CP || {};
       : ui().icon('radar', 13) + ' 未生成画像';
   };
 
+  /* ---------- 本地存储占用（图片以 base64 存在 localStorage，容易接近上限） ---------- */
+  function storageBytes() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        const v = localStorage.getItem(k) || '';
+        total += (String(k).length + v.length) * 2; // UTF-16
+      }
+    } catch (_) { /* ignore */ }
+    return total;
+  }
+
+  function fmtBytes(n) {
+    if (n >= 1024 * 1024) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return Math.round(n / 1024) + ' KB';
+    return n + ' B';
+  }
+
   /* ---------- 设置弹窗（AI Key 存入系统钥匙串） ---------- */
   async function openSettings() {
     const s = S().settings;
@@ -123,6 +142,8 @@ window.CP = window.CP || {};
     const aiUsage = CP.actions.aiPolishUsage();
     const secureMode = CP.vault.mode ? CP.vault.mode() : 'keychain';
     const secureText = secureMode === 'keychain' ? '系统钥匙串加密保存' : '浏览器预览：仅本次会话有效';
+    const usedBytes = storageBytes();
+    const storageWarn = usedBytes > 3.5 * 1024 * 1024;
     let keyStored = false;
     try { keyStored = !!(await CP.vault.getRaw('ai:key')); } catch (_) { keyStored = false; }
     ui().openModal(`
@@ -167,6 +188,15 @@ window.CP = window.CP || {};
           <button class="btn btn-soft btn-sm" id="set-export">${ui().icon('download', 13)} 导出备份</button>
           <button class="btn btn-ghost btn-sm" id="set-import">${ui().icon('upload', 13)} 导入备份</button>
           <input type="file" id="set-import-file" accept="application/json,.json" style="display:none" />
+        </div>
+        <div class="divider"></div>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('gauge', 14)} 本地存储</div>
+        <div class="hint" id="set-storage" style="margin-top:6px;color:${storageWarn ? 'var(--amber)' : ''}">
+          已用约 ${fmtBytes(usedBytes)}（浏览器上限约 5 MB）。图片以 base64 内嵌，占用较大。
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="set-clear-drafts">${ui().icon('trash', 13)} 清理编辑器草稿</button>
+          ${CP.actions.hasDemoData() ? `<button class="btn btn-ghost btn-sm" id="set-clear-demo">${ui().icon('trash', 13)} 清理演示数据</button>` : ''}
         </div>
       </div>
       <div class="modal-foot">
@@ -265,6 +295,49 @@ window.CP = window.CP || {};
       };
       reader.readAsText(file);
     });
+
+    /* 本地存储清理 */
+    function refreshStorageHint() {
+      const el = modal.querySelector('#set-storage');
+      if (!el) return;
+      const b = storageBytes();
+      el.textContent = `已用约 ${fmtBytes(b)}（浏览器上限约 5 MB）。图片以 base64 内嵌，占用较大。`;
+      el.style.color = b > 3.5 * 1024 * 1024 ? 'var(--amber)' : '';
+    }
+
+    modal.querySelector('#set-clear-drafts').addEventListener('click', async () => {
+      const ok = await ui().confirm({
+        title: '清理编辑器草稿',
+        message: '将删除所有未保存的编辑器草稿，已保存的文章不受影响。确定继续？',
+        confirmText: '清理',
+        danger: true,
+        stack: true
+      });
+      if (!ok) return;
+      CP.actions.clearAllDrafts();
+      refreshStorageHint();
+      ui().toast('已清理编辑器草稿', 'ok');
+    });
+
+    const clearDemoBtn = modal.querySelector('#set-clear-demo');
+    if (clearDemoBtn) {
+      clearDemoBtn.addEventListener('click', async () => {
+        const ok = await ui().confirm({
+          title: '清理演示数据',
+          message: '将删除内置的演示文章与发布记录，你自己创建的内容不受影响。确定继续？',
+          confirmText: '清理',
+          danger: true,
+          stack: true
+        });
+        if (!ok) return;
+        CP.actions.clearDemoData();
+        refreshStorageHint();
+        clearDemoBtn.remove();
+        renderShell();
+        render();
+        ui().toast('已清理演示数据', 'ok');
+      });
+    }
 
     function collectAutoPull() {
       return {

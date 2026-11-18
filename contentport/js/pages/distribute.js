@@ -11,6 +11,7 @@ window.CP = window.CP || {};
 
   let loading = false;
   let activePid = null;
+  let skipAiConfirm = false; // 本次会话不再提示 AI 改写费用
 
   CP.registerPage('distribute', (root) => {
     const article = S().articles.find(a => a.id === S().ui.activeArticleId) || S().articles[0];
@@ -205,6 +206,40 @@ window.CP = window.CP || {};
     right.querySelector('[data-act="ai-deep"]').addEventListener('click', (e) => aiDeep(root, e.target.closest('[data-act="ai-deep"]').dataset.pid));
   }
 
+  /* ---------- AI 改写前确认：让用户知道会消耗 API 额度 ---------- */
+  function askAiRewrite(count) {
+    return new Promise(resolve => {
+      let choice = 'cancel';
+      const { close, rootEl } = ui().openModal(`
+        <div class="modal-head">
+          <h3>用 AI 改写 ${count} 个平台？</h3>
+          <p>AI 会为每个平台生成计划并润色，单平台最多调用 3 次模型，将消耗你的 DeepSeek API 额度。</p>
+        </div>
+        <div class="modal-body">
+          <div class="hint" style="line-height:1.8">只使用本地引擎不会产生任何费用，结构与质检同样完整，只是语言打磨弱一些。</div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ai-remember" style="width:16px;height:16px;accent-color:var(--primary)" />
+            本次会话不再提示
+          </label>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-choice="cancel">取消</button>
+          <button class="btn btn-ghost" data-choice="local">仅用本地引擎</button>
+          <button class="btn btn-primary" data-choice="ai">${ui().icon('bot', 15)} 用 AI 改写</button>
+        </div>`, { width: 540, onClose: () => resolve({ choice, remember: false }) });
+
+      const modal = rootEl.querySelector('.modal');
+      modal.querySelector('[data-choice="cancel"]').addEventListener('click', () => { choice = 'cancel'; close(); });
+      modal.querySelector('[data-choice="local"]').addEventListener('click', () => { choice = 'local'; close(); });
+      modal.querySelector('[data-choice="ai"]').addEventListener('click', () => {
+        choice = 'ai';
+        const remember = !!modal.querySelector('#ai-remember').checked;
+        close();
+        resolve({ choice, remember });
+      });
+    });
+  }
+
   /* ---------- 智能改写 ---------- */
   async function runRewrite() {
     const root = document.getElementById('content');
@@ -214,17 +249,26 @@ window.CP = window.CP || {};
     if (!articleId) { ui().toast('请先选择文章', 'warn'); return; }
 
     const aiReady = await CP.api.isAiReady();
+    let localOnly = false;
+    if (aiReady && !skipAiConfirm) {
+      const ans = await askAiRewrite(sel.length);
+      if (ans.choice === 'cancel') return;
+      if (ans.choice === 'local') localOnly = true;
+      if (ans.remember && ans.choice === 'ai') skipAiConfirm = true;
+    }
+    const useAI = aiReady && !localOnly;
+
     loading = true;
     CP.actions.clearRewrite();
     const btn = root.querySelector('#d-run');
     btn.disabled = true;
-    btn.innerHTML = ui().icon('refresh', 15) + (aiReady ? ' AI 改写中…' : ' 改写中…');
+    btn.innerHTML = ui().icon('refresh', 15) + (useAI ? ' AI 改写中…' : ' 改写中…');
     renderRight(root, 'loading');
 
-    const res = await CP.api.rewriteArticle(articleId, sel);
+    const res = await CP.api.rewriteArticle(articleId, sel, { localOnly: !useAI });
     loading = false;
     btn.disabled = false;
-    btn.innerHTML = ui().icon('sparkles', 15) + (aiReady ? ' 智能改写（AI）' : ' 智能改写');
+    btn.innerHTML = ui().icon('sparkles', 15) + ' 智能改写';
 
     if (res.code !== 0) { ui().toast(res.msg || '改写失败', 'warn'); renderRight(root, 'idle'); return; }
     const results = res.data;
@@ -232,7 +276,7 @@ window.CP = window.CP || {};
     activePid = sel[0];
     renderRight(root, 'idle');
 
-    if (aiReady) {
+    if (useAI) {
       const failCount = Object.keys(res.errors || {}).length;
       if (failCount > 0) {
         ui().toast(`AI 改写完成，${failCount} 个平台回退规则引擎（${ui().esc(Object.values(res.errors)[0])}）`, 'warn');
@@ -240,7 +284,7 @@ window.CP = window.CP || {};
         ui().toast(`AI 已为 ${sel.length} 个平台生成原生改写稿`, 'ok');
       }
     } else {
-      ui().toast(`已为 ${sel.length} 个平台生成改写稿（规则引擎）`, 'ok');
+      ui().toast(`已用本地引擎为 ${sel.length} 个平台生成改写稿（未消耗 AI 额度）`, 'ok');
     }
   }
 

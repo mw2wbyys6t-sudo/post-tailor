@@ -236,6 +236,7 @@ window.CP = window.CP || {};
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>关闭</button>
+        <button class="btn btn-ghost" id="d-detail-export">${ui().icon('download', 15)} 导出 Markdown</button>
         <button class="btn btn-danger" id="d-detail-delete">${ui().icon('trash', 15)} 删除</button>
         <button class="btn btn-ghost" id="d-detail-edit">${ui().icon('pen', 15)} 编辑</button>
         <button class="btn btn-primary" id="d-detail-distribute">${ui().icon('send', 15)} 去分发</button>
@@ -251,6 +252,11 @@ window.CP = window.CP || {};
     modal.querySelector('#d-detail-edit').addEventListener('click', () => {
       modal.closest('.modal-wrap').querySelector('[data-close]').click();
       editArticleModal(aid);
+    });
+    modal.querySelector('#d-detail-export').addEventListener('click', () => {
+      const safe = String(a.title || '文章').replace(/[\\/:*?"<>|\n]/g, '').slice(0, 30) || 'article';
+      ui().downloadFile(`OmniDraft-${safe}.md`, `# ${a.title}\n\n${a.body}\n`, 'text/markdown');
+      ui().toast('已下载 Markdown 原文', 'ok');
     });
     modal.querySelector('#d-detail-delete').addEventListener('click', () => {
       if (!window.confirm(`确定删除「${a.title}」？\n\n改写稿、草稿和待发布任务会一并删除；已生成的发布记录会保留。此操作无法撤销。`)) return;

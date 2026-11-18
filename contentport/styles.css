@@ -570,7 +570,7 @@ input, select, textarea { font-family: inherit; color: var(--ink); }
   font-weight: 600; border-bottom: 1px solid var(--border-strong); background: var(--surface-2);
   white-space: nowrap;
 }
-.table td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
 .table tr:hover td { background: var(--surface-2); }
 .table .t-title { font-weight: 600; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .table .t-score { font-weight: 700; font-family: var(--font-display); }
