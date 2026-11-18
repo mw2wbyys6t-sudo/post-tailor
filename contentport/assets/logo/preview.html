@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>OmniDraft · 品牌标志预览</title>
+<link rel="icon" href="icon-32.png" />
+<style>
+  :root {
+    --bg: #F5F2EB; --surface: #FFFFFF; --ink: #23262E; --ink-2: #555A66;
+    --ink-3: #8B8F9B; --border: #E4DED2; --primary: #0F766E; --amber: #C27803;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    padding: 56px 64px 96px; line-height: 1.7;
+  }
+  h1 { font-family: "Noto Serif SC", "Songti SC", Georgia, serif; font-size: 30px; letter-spacing: .5px; }
+  .sub { color: var(--ink-3); font-size: 13px; margin-top: 6px; }
+  section { margin-top: 44px; }
+  h2 {
+    font-size: 12.5px; letter-spacing: .14em; color: var(--ink-3);
+    font-weight: 700; text-transform: uppercase; margin-bottom: 16px;
+  }
+  .row { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .tile span { font-size: 11.5px; color: var(--ink-3); }
+  .dark { background: #0B1F1C; border-color: #123B35; }
+  .dark span { color: #7EA8A1; }
+  .lockup-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px 24px; display: inline-block;
+  }
+  .lockup-card img { display: block; width: 680px; max-width: 100%; }
+  .note { display: grid; grid-template-columns: repeat(3, minmax(200px, 1fr)); gap: 16px; margin-top: 8px; }
+  .note div {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .note b { display: block; margin-bottom: 4px; color: var(--ink); font-size: 13.5px; }
+  .swatches { display: flex; gap: 10px; margin-top: 10px; }
+  .sw { width: 56px; height: 56px; border-radius: 12px; border: 1px solid rgba(0,0,0,.06); }
+  .filelist { font-size: 12.5px; color: var(--ink-3); margin-top: 10px; }
+  code { font-family: Consolas, Menlo, monospace; font-size: 12px; background: #EDE8DD; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>OmniDraft · 一稿千面</h1>
+  <div class="sub">品牌标志预览 · 矢量源文件位于 assets/logo/</div>
+
+  <section>
+    <h2>主图标</h2>
+    <div class="row">
+      <div class="tile"><img src="icon-256.png" width="256" height="256" alt="图标 256" /><span>256</span></div>
+      <div class="tile"><img src="icon-256.png" width="128" height="128" alt="图标 128" /><span>128</span></div>
+      <div class="tile"><img src="icon-64.png" width="64" height="64" alt="图标 64" /><span>64</span></div>
+      <div class="tile"><img src="icon-32.png" width="32" height="32" alt="图标 32" /><span>32</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>深色背景 / 单色版</h2>
+    <div class="row">
+      <div class="tile dark"><img src="icon-256.png" width="160" height="160" alt="深色背景图标" /><span>彩色图标（深色底）</span></div>
+      <div class="tile dark"><img src="mark-mono-512.png" width="160" height="160" alt="单色标志" /><span>单色描边版</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>横版组合</h2>
+    <div class="lockup-card"><img src="lockup.png" alt="OmniDraft 横版标志" /></div>
+  </section>
+
+  <section>
+    <h2>设计说明</h2>
+    <div class="note">
+      <div><b>三层稿纸</b>同一份稿子向不同平台展开的多个版本，是产品最核心的动作。</div>
+      <div><b>琥珀色首行 + 星芒</b>代表选题与 AI 辅助改写：先有判断，再生成表达。</div>
+      <div><b>深青底色</b>沿用应用设计系统主色，与暖纸色界面形成稳定识别。</div>
+    </div>
+    <div class="swatches">
+      <div class="sw" style="background:#0F766E" title="#0F766E"></div>
+      <div class="sw" style="background:#0A544E" title="#0A544E"></div>
+      <div class="sw" style="background:#C27803" title="#C27803"></div>
+      <div class="sw" style="background:#E8A33D" title="#E8A33D"></div>
+      <div class="sw" style="background:#F5F2EB" title="#F5F2EB"></div>
+      <div class="sw" style="background:#23262E" title="#23262E"></div>
+    </div>
+    <div class="filelist">
+      矢量：<code>icon.svg</code> · <code>mark-mono.svg</code> · <code>lockup.svg</code><br>
+      位图：<code>icon-1024 / 512 / 256 / 64 / 32.png</code> · <code>lockup.png</code> · <code>mark-mono-512.png</code>
+    </div>
+  </section>
+</body>
+</html>
