@@ -173,6 +173,8 @@ window.CP = window.CP || {};
               <td style="font-size:12px;color:var(--ink-3)">${h.time}${h.lastSync ? `<div style="font-size:11px;color:var(--ink-4)">${h.lastSync} 更新</div>` : ''}</td>
               <td>
                 <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
+                  ${contentOf(h) ? `<button class="btn btn-ghost btn-sm" data-viewcontent="${h.id}">${ui().icon('fileText', 12)} 查看稿</button>` : ''}
+                  ${h.status === '失败' ? `<button class="btn btn-primary btn-sm" data-retry="${h.id}">${ui().icon('refresh', 12)} 重试</button>` : ''}
                   ${(h.series && h.series.length > 1) ? `<button class="btn btn-ghost btn-sm" data-trend="${h.id}">${ui().icon('activity', 12)} 趋势</button>` : ''}
                   ${canPull ? `<button class="btn btn-ghost btn-sm" data-stats="${h.id}">${ui().icon('refresh', 12)} 回拉数据</button>` : ''}
                   ${h.copyContent ? `<button class="btn btn-ghost btn-sm" data-export="${h.id}">${ui().icon('download', 12)} 导出</button>` : ''}
@@ -193,6 +195,120 @@ window.CP = window.CP || {};
     body.querySelectorAll('[data-export]').forEach(btn => {
       btn.addEventListener('click', () => exportCopy(btn.dataset.export));
     });
+    body.querySelectorAll('[data-viewcontent]').forEach(btn => {
+      btn.addEventListener('click', () => viewContent(btn.dataset.viewcontent));
+    });
+    body.querySelectorAll('[data-retry]').forEach(btn => {
+      btn.addEventListener('click', () => retryPublish(btn.dataset.retry, btn));
+    });
+  }
+
+  /* ---------- 取当时的稿件：优先改写稿，其次复制稿，最后退回当前文章 ---------- */
+  function contentOf(h) {
+    if (!h) return null;
+    const bag = (CP.state.rewrites || {})[h.articleId] || {};
+    const rw = bag[h.platformId];
+    if (rw && rw.body) return { title: rw.title || '', body: rw.body, quality: rw.quality, from: 'rewrite' };
+    if (h.copyContent && h.copyContent.body) {
+      return { title: h.copyContent.title || '', body: h.copyContent.body, from: 'copy' };
+    }
+    const a = CP.actions.getArticle(h.articleId);
+    if (a && a.body) return { title: a.title, body: a.body, from: 'article' };
+    return null;
+  }
+
+  /* ---------- 查看当时发布的那一版 ---------- */
+  function viewContent(id) {
+    const h = S().history.find(x => x.id === id);
+    if (!h) return;
+    const src = contentOf(h);
+    if (!src) { ui().toast('找不到当时的稿件（文章可能已删除）', 'warn'); return; }
+    const p = M().PLATFORMS.find(x => x.id === h.platformId) || { name: '平台', color: '#888888' };
+    const q = src.quality;
+    ui().openModal(`
+      <div class="modal-head">
+        <h3>${ui().esc(src.title || h.copyContent && h.copyContent.title || '当时发布的稿件')}</h3>
+        <p>${p.name} · ${ui().esc(h.time || '')} · ${ui().esc(h.status || '')}${h.score ? ` · 质检 ${h.score} 分` : ''}</p>
+      </div>
+      <div class="modal-body">
+        ${q && q.dims ? `<div class="label">质检分项</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px">
+          ${[['C', '信息保留'], ['S', '结构'], ['L', '长度'], ['T', '标题'], ['O', '原创'], ['R', '可读'], ['M', '合规']]
+            .map(([k, label]) => `<span class="tag tag-default">${label} ${q.dims[k] || 0}</span>`).join('')}
+        </div>` : ''}
+        <div class="label">正文</div>
+        <div class="md-body" style="max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:6px">
+          ${ui().renderMd(src.body)}
+        </div>
+        <div class="hint">来源：${src.from === 'rewrite' ? '当前保存的改写稿' : src.from === 'copy' ? '发布时生成的复制稿' : '文章原文（改写稿已被覆盖）'}</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-mclose>关闭</button>
+        <button class="btn btn-ghost" id="vc-copy">${ui().icon('copy', 15)} 复制全文</button>
+        <button class="btn btn-primary" id="vc-download">${ui().icon('download', 15)} 下载 Markdown</button>
+      </div>`, { width: 760 });
+
+    const modal = document.querySelector('.modal');
+    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+    modal.querySelector('#vc-copy').addEventListener('click', () => {
+      const text = `${src.title}\n\n${src.body}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => ui().toast('已复制', 'ok')).catch(() => ui().toast('复制失败，请手动选择', 'warn'));
+      } else {
+        ui().toast('当前环境不支持剪贴板', 'warn');
+      }
+    });
+    modal.querySelector('#vc-download').addEventListener('click', () => {
+      const safe = String(src.title || '稿件').replace(/[\\/:*?"<>|\n]/g, '').slice(0, 30) || 'copy';
+      ui().downloadFile(`OmniDraft-${p.name}-${safe}.md`, `# ${src.title}\n\n${src.body}\n`, 'text/markdown');
+      ui().toast('已下载 Markdown', 'ok');
+    });
+  }
+
+  /* ---------- 重试失败记录：复用原稿件，就地在原记录上更新 ---------- */
+  async function retryPublish(id, btn) {
+    const h = S().history.find(x => x.id === id);
+    if (!h) return;
+    const src = contentOf(h);
+    if (!src) { ui().toast('找不到当时的稿件，无法重试；请到分发工作台重新发布', 'warn'); return; }
+
+    if (typeof CP.preflightPublish === 'function') {
+      const pre = CP.preflightPublish(h.platformId, { title: src.title, body: src.body, quality: src.quality });
+      if (pre.blockers.length) {
+        ui().toast(`重试已取消：${pre.blockers[0]}`, 'warn');
+        return;
+      }
+    }
+
+    const old = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = ui().icon('refresh', 12) + ' 重试中…';
+    let res;
+    try {
+      res = await CP.api.publish({
+        articleId: h.articleId,
+        platformId: h.platformId,
+        title: src.title,
+        body: src.body,
+        accountNickname: h.accountNickname || '',
+        score: h.score,
+        recordId: h.id
+      });
+    } catch (e) {
+      res = { code: 1, msg: e.message || '发布失败' };
+    }
+    btn.disabled = false;
+    btn.innerHTML = old;
+
+    const root = document.getElementById('content');
+    if (res.code === 0) {
+      renderTable(root);
+      const mode = res.data && res.data.mode;
+      ui().toast(mode === 'auto' ? '重试成功：已发布到平台' : '重试完成：已重新生成复制稿', 'ok');
+    } else {
+      renderTable(root);
+      ui().toast(`重试失败：${res.msg || '未知错误'}`, 'warn');
+    }
   }
 
   /* ---------- 趋势弹窗（纯 SVG 折线图） ---------- */
@@ -276,6 +392,14 @@ window.CP = window.CP || {};
       ui().toast(`已回拉 ${r.updated} 条记录的数据`, 'ok');
     }
   }
+
+  /* ---------- 其他页面发布后，若正停留在本页则刷新表格 ---------- */
+  window.addEventListener('cp:history-updated', () => {
+    if (document.body.dataset.page === 'history') {
+      const content = document.getElementById('content');
+      if (content && content.querySelector('#h-body')) renderTable(content);
+    }
+  });
 
   /* ---------- 自动回拉完成后，若正停留在本页则刷新表格 ---------- */
   window.addEventListener('cp:stats-updated', () => {

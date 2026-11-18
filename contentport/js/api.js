@@ -442,7 +442,7 @@ window.CP = window.CP || {};
        POST /api/publish  —— 发布文章到平台
        实际模式：接平台开放 API 自动发布；未接入时生成复制稿
        -------------------------------------------------------- */
-    async publish({ articleId, platformId, title, body, accountNickname = '', scheduledAt, score = null, algorithm = null }) {
+    async publish({ articleId, platformId, title, body, accountNickname = '', scheduledAt, score = null, algorithm = null, recordId = null }) {
       await delay(1500);
       const article = CP.actions.getArticle(articleId);
       const platform = M().PLATFORMS.find(p => p.id === platformId);
@@ -479,6 +479,18 @@ window.CP = window.CP || {};
       };
       if (algorithm) rec.algorithm = algorithm;
 
+      /* 重试场景：更新原记录而不是新增一条，避免历史里出现重复条目 */
+      const commit = (r) => {
+        if (recordId) {
+          const patch = { ...r };
+          delete patch.id;
+          CP.actions.updateHistory(recordId, patch);
+          try { window.dispatchEvent(new Event('cp:history-updated')); } catch (_) { /* ignore */ }
+        } else {
+          CP.actions.addHistory(r);
+        }
+      };
+
       // 真实发布通道（Electron + 已登录账号）
       const electron = window.electronAPI;
       if (autoPublish && electron && typeof electron.publishTo === 'function') {
@@ -494,19 +506,19 @@ window.CP = window.CP || {};
           if (result.status === 'opened') {
             rec.status = '已打开发布页';
             rec.link = '';
-            CP.actions.addHistory(rec);
+            commit(rec);
             return { code: 0, data: { rec, mode: 'auto', openedPage: true, platformName: result.platformName || platform.name, note: result.note || '' } };
           }
           rec.status = '已发布';
           rec.link = result.url || result.link || '';
           if (result.postid) rec.postId = result.postid;
           if (result.publish_id) rec.publishId = result.publish_id;
-          CP.actions.addHistory(rec);
+          commit(rec);
           return { code: 0, data: { rec, mode: 'auto', platformName: result.platformName || platform.name, note: result.note || '' } };
         } catch (e) {
           rec.status = '失败';
           rec.failReason = e.message || '发布失败';
-          CP.actions.addHistory(rec);
+          commit(rec);
           return { code: 1, msg: e.message || '发布失败', data: { rec, mode: 'auto', platformName: platform.name } };
         }
       }
@@ -517,7 +529,7 @@ window.CP = window.CP || {};
         rec.link = '';
         rec.copyContent = { title, body }; // 复制稿导出用
       }
-      CP.actions.addHistory(rec);
+      commit(rec);
       return { code: 0, data: { rec, mode: autoPublish ? 'auto' : 'copy', pendingReal, platformName: platform.name } };
     },
 

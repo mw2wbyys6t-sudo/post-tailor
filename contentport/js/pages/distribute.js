@@ -737,4 +737,6 @@ window.CP = window.CP || {};
     });
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
   }
+  /* 供发布记录等页面复用发布前检查 */
+  CP.preflightPublish = preflight;
 })();
