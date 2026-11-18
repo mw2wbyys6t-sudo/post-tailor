@@ -122,6 +122,163 @@
     return out.join('\n\n');
   }
 
+  /* ---------- 结构修复：模型常把「小标题」写成加粗行 ----------
+     这里做确定性后处理，只调整排版与结构，不新增事实。 */
+  function normalizeTitle(title, plan, platform) {
+    const t = String(title || '').trim();
+    const len = Array.from(t).length;
+    const max = platform.title.max;
+    const min = platform.title.min;
+    if ((len > max || len < min) && plan.title) {
+      const pl = Array.from(plan.title).length;
+      if (pl >= min && pl <= max) return plan.title;
+    }
+    return t.slice(0, 80);
+  }
+
+  function convertBoldHeadings(body) {
+    const lines = String(body).split('\n');
+    let inCode = false;
+    return lines.map(line => {
+      const t = line.trim();
+      if (/^```/.test(t)) { inCode = !inCode; return line; }
+      if (inCode || !t) return line;
+      // 整行加粗 → 小标题
+      let m = t.match(/^\*\*([^*\n]{2,30})\*\*[。.：:]?$/);
+      if (m) return '## ' + m[1].replace(/[。.：:]\s*$/, '');
+      // 段落以加粗短语开头 → 小标题 + 正文
+      m = t.match(/^\*\*([^*\n]{2,24})[。.：:]?\*\*\s*([\s\S]+)$/);
+      if (m) return '## ' + m[1].replace(/[。.：:]\s*$/, '') + '\n\n' + m[2].trim();
+      return line;
+    }).join('\n');
+  }
+
+  function countHeadings(body) {
+    return (String(body).match(/^#{1,6}\s+/gm) || []).length;
+  }
+
+  function countBullets(body) {
+    return (String(body).match(/^\s*(?:[-*+]|\d+\.)\s+/gm) || []).length;
+  }
+
+  function ensureList(body, min, plan) {
+    if (countBullets(body) >= min) return body;
+    const items = (plan.mustKeep || []).slice(0, Math.max(2, min))
+      .map(s => '- ' + String(s).replace(/\s+/g, ' ').slice(0, 50))
+      .filter(s => s.length > 4);
+    if (!items.length) return body;
+    return body.trimEnd() + '\n\n## 核心要点\n\n' + items.join('\n');
+  }
+
+  function ensureHeading(body) {
+    if (countHeadings(body) > 0) return body;
+    const blocks = String(body).split(/\n{2,}/);
+    const idx = blocks.findIndex(b => /^[-*+]\s|^\d+\.\s/.test(b.trim()));
+    if (idx >= 0) {
+      blocks.splice(idx, 0, '## 核心要点');
+      return blocks.join('\n\n');
+    }
+    blocks.splice(Math.max(1, blocks.length - 1), 0, '## 核心要点');
+    return blocks.join('\n\n');
+  }
+
+  function ensureBold(body) {
+    if (/\*\*[^*\n]+\*\*/.test(body)) return body;
+    const blocks = String(body).split(/\n{2,}/);
+    for (let i = 0; i < blocks.length; i++) {
+      const t = blocks[i].trim();
+      if (!t || /^#{1,6}\s/.test(t) || /^```/.test(t) || /^[-*+]\s/.test(t) || /^\d+\.\s/.test(t)) continue;
+      const m = t.match(/^([^。！？!?\n]{6,40})([。！？!?]?)([\s\S]*)$/);
+      if (m) {
+        blocks[i] = '**' + m[1] + '**' + m[2] + m[3];
+        return blocks.join('\n\n');
+      }
+    }
+    return body;
+  }
+
+  function ensureCTA(body, platform) {
+    const tail = String(body).slice(-400);
+    const kws = (platform.cta && platform.cta.keywords) || [];
+    if (kws.some(k => tail.indexOf(k) >= 0)) return body;
+    const text = platform.cta && platform.cta.text;
+    return text ? String(body).trimEnd() + '\n\n' + text : body;
+  }
+
+  function splitLongParagraphs(body, max) {
+    const blocks = String(body).split(/\n{2,}/);
+    const out = [];
+    let inCode = false;
+    blocks.forEach(b => {
+      const t = b.trim();
+      if (/^```/.test(t)) { inCode = !inCode; out.push(b); return; }
+      if (inCode || t.length <= max || /^#{1,6}\s/.test(t) || /^[-*+]\s|^\d+\.\s/.test(t) || /^\|/.test(t)) {
+        out.push(b);
+        return;
+      }
+      const parts = t.split(/(?<=[。！？!?])/).map(s => s.trim()).filter(Boolean);
+      let buf = '';
+      parts.forEach(p => {
+        if (buf && (buf + p).length > max) { out.push(buf); buf = p; }
+        else buf += p;
+      });
+      if (buf) out.push(buf);
+    });
+    return out.join('\n\n');
+  }
+
+  function ensureXhsFormat(body) {
+    const EMOJIS = ['🔥', '✨', '📌', '✅', '💡'];
+    const emojiRe = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu;
+    let out = splitLongParagraphs(body, 50);
+    const countEmoji = s => (s.match(emojiRe) || []).length;
+    let need = Math.max(0, 3 - countEmoji(out));
+    if (!need) return out;
+    const lines = out.split('\n');
+    let k = 0;
+    // 优先给标题和列表加 emoji
+    for (let i = 0; i < lines.length && need > 0; i++) {
+      const t = lines[i].trim();
+      if (/^#{1,6}\s/.test(t) && !/^#{1,6}\s*[\u{1F300}-\u{1FAFF}]/u.test(t)) {
+        lines[i] = t.replace(/^(#{1,6})\s+/, '$1 ' + EMOJIS[k++ % EMOJIS.length] + ' ');
+        need--;
+      } else if (/^[-*+]\s/.test(t) && !/^[-*+]\s*[\u{1F300}-\u{1FAFF}]/u.test(t)) {
+        lines[i] = t.replace(/^([-*+])\s+/, '$1 ' + EMOJIS[k++ % EMOJIS.length] + ' ');
+        need--;
+      }
+    }
+    out = lines.join('\n');
+    // 还不够就点缀前三个短段落
+    if (need > 0) {
+      const blocks = out.split(/\n{2,}/);
+      for (let i = 0; i < blocks.length && need > 0; i++) {
+        const t = blocks[i].trim();
+        if (!t || /^#{1,6}\s/.test(t) || /^```/.test(t) || /^[-*+]\s/.test(t)) continue;
+        blocks[i] = EMOJIS[k++ % EMOJIS.length] + ' ' + t;
+        need--;
+      }
+      out = blocks.join('\n\n');
+    }
+    return out;
+  }
+
+  function repairStructure(body, plan, platform) {
+    let out = String(body || '').trim();
+    out = convertBoldHeadings(out);
+    if (platform.id === 'xhs') {
+      out = ensureXhsFormat(out);
+    }
+    if (platform.id === 'wechat') {
+      out = ensureBold(out);
+    }
+    if (platform.id === 'csdn' || platform.id === 'zhihu') {
+      out = ensureList(out, platform.id === 'csdn' ? 1 : 2, plan);
+    }
+    out = ensureHeading(out);
+    out = ensureCTA(out, platform);
+    return out.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function p0Violation(platform, text) {
     return (platform.taboo || []).some(t => t.level === 'P0' && t.re.test(text));
   }
@@ -140,6 +297,17 @@
   }
 
   /* ---------- AI 提示词 ---------- */
+  const STRUCTURE_RULES = {
+    csdn: ['至少 3 个 ## 小标题', '至少 1 个 - 列表或 1 个代码块', '结尾给一句总结或行动建议'],
+    wechat: ['至少 2 个 ## 小标题', '至少 1 处 **加粗** 金句', '开头两句内给出结论', '结尾有互动引导'],
+    xhs: ['至少 3 个 emoji', '70% 以上段落不超过 50 字', '标题不超过 20 字', '结尾提问或引导评论'],
+    zhihu: ['至少 2 个 ## 小标题', '至少 2 条 - 列表或 2 处加粗', '标注来源或适用边界', '结尾总结']
+  };
+
+  function structureRules(platform) {
+    return (STRUCTURE_RULES[platform.id] || ['至少 2 个 ## 小标题', '结尾有行动引导']).join('；');
+  }
+
   function planMessages(analysis, plan, platform, portrait) {
     const system = [
       `你是多平台爆款内容策划，精通${platform.name}的读者心理与推荐机制。`,
@@ -173,44 +341,54 @@
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
   }
 
-  function draftMessages(analysis, plan, platform) {
+  function draftMessages(analysis, plan, platform, baseDraft) {
     const system = [
-      `你是${platform.name}的资深原生作者，写的稿子要像该平台土生土长。`,
+      `你是${platform.name}的资深原生编辑，任务是把「本地初稿」润色成该平台读者读起来毫无违和感的成稿。`,
       '硬性要求：',
-      '1. 只使用原文事实与数字，不得编造新数据、案例或结论；',
+      '1. 只使用初稿与原文要点里的事实、数字，不得编造新数据、案例或结论；',
       `2. 结构必须遵循：${plan.structureRoles.join(' → ')}；`,
       `3. 字数控制在 ${plan.length.min}-${plan.length.max} 字；`,
       `4. 标题使用：${plan.title}（可微调，但必须保留关键词「${plan.keyword}」）；`,
       '5. 合并本平台禁忌：' + (platform.taboo || []).map(t => t.msg).join('；'),
-      '6. 输出合法 JSON：{"title":"标题","body":"markdown 正文","usedFacts":["用到的原文事实"]}',
+      '6. 结构硬性清单（必须全部满足）：' + structureRules(platform) + '；',
+      '7. 原创硬性要求：不得原句照搬原文要点；用新的句式和连接词表达，事实与数字保持不变；',
+      '8. 小标题必须使用 Markdown 的 ##，不要用 **加粗行** 代替小标题；',
+      '9. 输出合法 JSON：{"title":"标题","body":"markdown 正文","usedFacts":["用到的原文事实"]}',
       '不要输出 JSON 以外的任何文字。'
     ].join('\n');
     const user = [
       plan.brief,
+      '【直接受众与语气】' + JSON.stringify({ role: platform.audience.role, tone: platform.audience.tone, habits: platform.audience.habits }),
       '【必须保留的原文要点】',
       plan.mustKeep.map(k => '- ' + k).join('\n'),
-      '【原文】',
-      stripImages(analysis.body).slice(0, 12000),
-      '请输出该平台的原生改写稿 JSON。'
+      '【必须保留的数字】',
+      analysis.numbers.map(n => n.raw).join('、') || '（无）',
+      '【本地初稿·标题】',
+      baseDraft.title,
+      '【本地初稿·正文】',
+      baseDraft.body,
+      '请在这份初稿的基础上润色，输出该平台的原生成稿 JSON。'
     ].join('\n\n');
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
   }
 
-  function reviseMessages(draft, analysis, plan, platform, qa) {
+  function reviseMessages(draft, analysis, plan, platform, qa, missing) {
     const system = [
       '你是严格的多平台内容质检编辑。根据问题单修改稿件，保留原有事实与数字，不得新增原文没有的信息。',
       `目标平台：${platform.name}；结构：${plan.structureRoles.join(' → ')}；字数：${plan.length.min}-${plan.length.max}。`,
+      '结构硬性清单（必须全部满足）：' + structureRules(platform) + '。',
+      '原创硬性要求：逐句替换与原文重复的长句，不得连续照抄超过 10 个字；事实和数字必须保留。',
       '输出合法 JSON：{"title":"标题","body":"markdown 正文"}。不要输出其他文字。'
     ].join('\n');
     const user = [
       '【质检问题单】',
       qa.issues.map(i => `- [${i.code}] ${i.msg}；修复建议：${i.fix}`).join('\n'),
+      (missing && missing.length ? '【必须补充的原文要点】\n' + missing.map(k => '- ' + k).join('\n') : ''),
+      '【必须保留的数字】\n' + (analysis.numbers.map(n => n.raw).join('、') || '（无）'),
       '【当前稿件】',
       draft.body,
-      '【原文（事实来源）】',
-      stripImages(analysis.body).slice(0, 10000),
-      '请输出修复后的完整 JSON。'
-    ].join('\n\n');
+      '请输出修复后的完整 JSON。不得新增事实，也不得整段照抄原文要点。'
+    ].filter(Boolean).join('\n\n');
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
   }
 
@@ -310,23 +488,37 @@
     let aiCalls = 0;
     let draft = null;
 
+    // 本地初稿：结构、事实与原创度的基线，也是 AI 润色的底稿
+    let localDraft = null;
+    let localQa = null;
+    function buildLocalDraft() {
+      if (localDraft) return;
+      const out = W.write(analysis, plan, platform);
+      localDraft = {
+        title: normalizeTitle(out.title, plan, platform),
+        body: repairStructure(out.body, plan, platform)
+      };
+      localQa = Q.check(localDraft, analysis, plan, platform);
+    }
+
     if (opts.aiChat) {
       // A. 计划（可选，失败沿用本地计划）
-      if (opts.aiChat) {
-        try {
-          aiCalls++;
-          const text = await callAI(opts.aiChat, planMessages(analysis, plan, platform, opts.portrait), 0.4);
-          mergeAiPlan(parseJsonLoose(text), plan, platform);
-        } catch (e) {
-          errors.push('plan: ' + e.message);
-        }
+      try {
+        aiCalls++;
+        const text = await callAI(opts.aiChat, planMessages(analysis, plan, platform, opts.portrait), 0.4);
+        mergeAiPlan(parseJsonLoose(text), plan, platform);
+      } catch (e) {
+        errors.push('plan: ' + e.message);
       }
 
-      // B. 成稿（可重试一次）
+      // 本地初稿在 AI 计划合并后生成，确保与最终结构一致
+      buildLocalDraft();
+
+      // B. 润色本地初稿（可重试一次）
       for (let attempt = 0; attempt < 2 && !draft; attempt++) {
         try {
           aiCalls++;
-          const text = await callAI(opts.aiChat, draftMessages(analysis, plan, platform), attempt === 0 ? 0.75 : 0.2);
+          const text = await callAI(opts.aiChat, draftMessages(analysis, plan, platform, localDraft), attempt === 0 ? 0.65 : 0.2);
           const parsed = parseJsonLoose(text);
           validateDraft(parsed, analysis, plan, platform);
           draft = { title: String(parsed.title).trim().slice(0, 80), body: String(parsed.body).trim() };
@@ -337,11 +529,15 @@
       }
     }
 
-    // 无 AI / AI 失败：确定性成稿
+    // 无 AI / AI 失败：直接用本地初稿
     if (!draft) {
-      const out = W.write(analysis, plan, platform);
-      draft = { title: out.title, body: out.body };
+      buildLocalDraft();
+      draft = { title: localDraft.title, body: localDraft.body };
     }
+
+    // 结构修复：把加粗小标题转成 Markdown 标题，补齐平台必备格式与 CTA
+    draft.title = normalizeTitle(draft.title, plan, platform);
+    draft.body = repairStructure(draft.body, plan, platform);
 
     let qa = Q.check(draft, analysis, plan, platform);
 
@@ -349,10 +545,15 @@
     if (opts.aiChat && usedAI && (qa.total < 85 || qa.issues.some(i => i.level === 'P1')) && aiCalls < MAX_AI_CALLS) {
       try {
         aiCalls++;
-        const text = await callAI(opts.aiChat, reviseMessages(draft, analysis, plan, platform, qa), 0.35);
+        const missing = plan.mustKeep
+          .filter(k => Q.containment(k, draft.body) < 0.45)
+          .slice(0, 5);
+        const text = await callAI(opts.aiChat, reviseMessages(draft, analysis, plan, platform, qa, missing), 0.35);
         const parsed = parseJsonLoose(text);
         validateDraft(parsed, analysis, plan, platform);
         const revised = { title: String(parsed.title).trim().slice(0, 80), body: String(parsed.body).trim() };
+        revised.title = normalizeTitle(revised.title, plan, platform);
+        revised.body = repairStructure(revised.body, plan, platform);
         const qa2 = Q.check(revised, analysis, plan, platform);
         const newP0 = qa2.metrics.p0;
         if (qa2.total >= qa.total + 3 && !newP0) {
@@ -362,6 +563,14 @@
       } catch (e) {
         errors.push('revise: ' + e.message);
       }
+    }
+
+    // AI 稿若明显差于本地初稿（尤其原创度），回退本地，避免为了用 AI 而降低质量
+    if (usedAI && (qa.dims.O < 60 || qa.total < localQa.total - 8)) {
+      draft = { title: localDraft.title, body: localDraft.body };
+      qa = localQa;
+      usedAI = false;
+      errors.push('local-fallback: AI 稿质量低于本地初稿');
     }
 
     // 图片优先平台：把原文配图带回改写稿，避免发布前检查因缺图被阻断
