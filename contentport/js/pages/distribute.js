@@ -183,6 +183,7 @@ window.CP = window.CP || {};
 
       <div class="rewrite-toolbar">
         <button class="btn btn-primary" data-act="publish" data-pid="${pid}">${ui().icon('send', 15)} 发布到${p.name}</button>
+        <button class="btn btn-ghost" data-act="edit-rewrite" data-pid="${pid}">${ui().icon('pen', 15)} 编辑此稿</button>
         <button class="btn btn-soft" data-act="publish-all">${ui().icon('send', 15)} 批量发布已改写平台</button>
         <button class="btn btn-ghost" data-act="copy" data-pid="${pid}">${ui().icon('copy', 15)} 复制改写稿</button>
         <button class="btn btn-ghost" data-act="download" data-pid="${pid}">${ui().icon('download', 15)} 下载稿</button>
@@ -197,6 +198,7 @@ window.CP = window.CP || {};
       });
     });
     right.querySelector('[data-act="publish"]').addEventListener('click', (e) => doPublish(root, e.target.closest('[data-act="publish"]').dataset.pid));
+    right.querySelector('[data-act="edit-rewrite"]').addEventListener('click', (e) => editRewrite(root, e.target.closest('[data-act="edit-rewrite"]').dataset.pid));
     right.querySelector('[data-act="publish-all"]').addEventListener('click', () => doPublishAll(root));
     right.querySelector('[data-act="copy"]').addEventListener('click', (e) => copyRewrite(e.target.closest('[data-act="copy"]').dataset.pid));
     right.querySelector('[data-act="download"]').addEventListener('click', (e) => downloadRewrite(e.target.closest('[data-act="download"]').dataset.pid));
@@ -299,6 +301,7 @@ window.CP = window.CP || {};
     const isXhs = pid === 'xhs'; // 小红书为浏览器全自动发布（复用登录 session 自动操作官方发布页）
     const autoMode = !!(acc && realSupport && credOkOf(pid, acc));
     const pendingMode = !!(acc && realSupport && !credOkOf(pid, acc));
+    const pre = preflight(pid, r);
 
     ui().openModal(`
       <div class="modal-head">
@@ -317,6 +320,15 @@ window.CP = window.CP || {};
         <div class="fact" style="margin-bottom:10px">
           <div class="f-l">发布模式</div>
           <div class="f-v" style="font-weight:600">${autoMode ? (isXhs ? '浏览器全自动发布（自动填写并提交，失败时回到发布页手动确认）' : '自动发布（以你的账号直接发布）') : (pendingMode ? '凭据不完整，请到账号中心重新登录' : '复制稿模式（生成排版后手动粘贴到平台编辑器）')}</div>
+        </div>
+        <div class="fact" style="margin-bottom:10px">
+          <div class="f-l">发布前检查</div>
+          <div class="f-v" style="font-weight:600">
+            ${pre.blockers.length || pre.warns.length ? `
+              ${pre.blockers.map(t => `<div style="color:var(--danger);font-weight:600;display:flex;gap:6px"><span>✕</span><span>${ui().esc(t)}</span></div>`).join('')}
+              ${pre.warns.map(t => `<div style="color:var(--amber);display:flex;gap:6px"><span>!</span><span>${ui().esc(t)}</span></div>`).join('')}
+            ` : `<span style="color:var(--ok);display:inline-flex;align-items:center;gap:6px">${ui().icon('checkCircle', 14)} 通过，未发现阻断项</span>`}
+          </div>
         </div>
         <div class="fact" style="margin-bottom:10px">
           <div class="f-l">发布时间</div>
@@ -340,12 +352,14 @@ window.CP = window.CP || {};
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
-        ${autoMode
-          ? `<button class="btn btn-primary" id="pub-confirm">${ui().icon('send', 15)} 确认发布</button>`
-          : (pendingMode
-            ? `<button class="btn btn-primary" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`
-            : `<button class="btn btn-primary" id="pub-go-acc">${ui().icon('user', 15)} 去登录账号</button>
-               <button class="btn btn-ghost" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`)}
+        ${pre.blockers.length
+          ? `<button class="btn btn-primary" disabled title="请先处理顶部的阻断项">${ui().icon('alert', 15)} 存在阻断项，无法发布</button>`
+          : (autoMode
+            ? `<button class="btn btn-primary" id="pub-confirm">${ui().icon('send', 15)} 确认发布</button>`
+            : (pendingMode
+              ? `<button class="btn btn-primary" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`
+              : `<button class="btn btn-primary" id="pub-go-acc">${ui().icon('user', 15)} 去登录账号</button>
+                 <button class="btn btn-ghost" id="pub-confirm-copy">${ui().icon('copy', 15)} 生成复制稿</button>`))}
       </div>`, { width: 560 });
 
     const modal = document.querySelector('.modal');
@@ -442,6 +456,131 @@ window.CP = window.CP || {};
     }
   }
 
+  /* 改写稿就地编辑：保存后重新质检，分数不再是生成时的一次性快照 */
+  function requality(articleId, pid, draft) {
+    const E = CP.engine;
+    const article = CP.actions.getArticle(articleId);
+    if (!E || !E.analysis || !article) return null;
+    try {
+      const analysis = E.analysis.analyze(article);
+      const platform = E.strategies.getPlatform(pid);
+      const plan = E.planner.buildPlan(analysis, pid, S().portrait || {});
+      return E.quality.check(draft, analysis, plan, platform);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function editRewrite(root, pid) {
+    const r = S().ui.rewriteResults[pid];
+    const articleId = S().ui.activeArticleId;
+    if (!r || !articleId) return;
+    const p = M().PLATFORMS.find(x => x.id === pid);
+
+    ui().openModal(`
+      <div class="modal-head">
+        <h3>编辑 ${p.name} 改写稿</h3>
+        <p>改完保存会重新质检，分数与问题清单同步更新。</p>
+      </div>
+      <div class="modal-body">
+        <label class="label">标题</label>
+        <input class="input" id="rw-title" value="${ui().esc(r.title)}" />
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
+          <span class="label" style="margin:0">正文（Markdown）</span>
+          <div style="margin-left:auto;display:flex;gap:4px">
+            <button class="btn btn-ghost btn-sm" data-rw-view="edit">编辑</button>
+            <button class="btn btn-ghost btn-sm" data-rw-view="preview">预览</button>
+          </div>
+        </div>
+        <textarea class="textarea" id="rw-body" rows="14" spellcheck="false">${ui().esc(r.body)}</textarea>
+        <div id="rw-preview" class="md-body" style="display:none;max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:8px"></div>
+        <div class="hint" id="rw-count"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-mclose>取消</button>
+        <button class="btn btn-primary" id="rw-save">${ui().icon('check', 15)} 保存并重新质检</button>
+      </div>`, { width: 760 });
+
+    const modal = document.querySelector('.modal');
+    const titleEl = modal.querySelector('#rw-title');
+    const bodyEl = modal.querySelector('#rw-body');
+    const previewEl = modal.querySelector('#rw-preview');
+    const countEl = modal.querySelector('#rw-count');
+    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+
+    const refresh = () => {
+      const chars = bodyEl.value.replace(/\s/g, '').length;
+      countEl.textContent = `${chars} 字（保存前质检 ${r.score} 分）`;
+      if (previewEl.style.display !== 'none') previewEl.innerHTML = ui().renderMd(bodyEl.value);
+    };
+    bodyEl.addEventListener('input', refresh);
+    modal.querySelectorAll('[data-rw-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const isPreview = btn.dataset.rwView === 'preview';
+        previewEl.style.display = isPreview ? '' : 'none';
+        bodyEl.style.display = isPreview ? 'none' : '';
+        if (isPreview) previewEl.innerHTML = ui().renderMd(bodyEl.value);
+      });
+    });
+    refresh();
+
+    modal.querySelector('#rw-save').addEventListener('click', () => {
+      const title = titleEl.value.trim();
+      const body = bodyEl.value.trim();
+      if (!title) { ui().toast('标题不能为空', 'warn'); return; }
+      if (!body) { ui().toast('正文不能为空', 'warn'); return; }
+      const before = r.score;
+      const qa = requality(articleId, pid, { title, body });
+      r.title = title;
+      r.body = body;
+      if (qa) { r.quality = qa; r.score = qa.total; }
+      // 调整清单里的标题/字数也要跟着更新，否则会显示旧值
+      if (Array.isArray(r.changes)) {
+        r.changes.forEach(c => {
+          if (c.dim === '标题') c.to = title;
+          if (c.dim === '字数' && qa) {
+            const target = (String(c.to).match(/（目标[^）]*）/) || [''])[0];
+            c.to = qa.metrics.charCount + ' 字' + (target ? ' ' + target : '');
+          }
+        });
+      }
+      CP.actions.setRewriteResult(pid, r);
+      modal.closest('.modal-wrap').querySelector('[data-close]').click();
+      renderRight(root, 'idle');
+      const diff = qa ? qa.total - before : 0;
+      ui().toast(
+        qa ? `已保存并重新质检：${qa.total} 分（${diff >= 0 ? '+' : ''}${diff}）` : '已保存改写稿',
+        qa && qa.total < 70 ? 'warn' : 'ok'
+      );
+    });
+  }
+
+  /* 发布前检查：阻断项禁止发布，提醒项可继续 */
+  function preflight(pid, r) {
+    const out = { blockers: [], warns: [] };
+    const E = CP.engine;
+    const title = String(r.title || '');
+    const body = String(r.body || '');
+    const chars = body.replace(/\s/g, '').length;
+    const tl = Array.from(title).length;
+
+    if (!title.trim()) out.blockers.push('标题为空');
+    if (!chars) out.blockers.push('正文为空');
+
+    if (E && E.strategies) {
+      const platform = E.strategies.getPlatform(pid);
+      if (tl > platform.title.max) out.blockers.push(`标题 ${tl} 字，超过${platform.name}建议上限 ${platform.title.max} 字`);
+      if (chars < platform.length.min * 0.6) out.warns.push(`正文 ${chars} 字，低于${platform.name}常见区间 ${platform.length.min}-${platform.length.max} 字`);
+      if (chars > platform.length.max) out.warns.push(`正文 ${chars} 字，超过${platform.name}常见上限 ${platform.length.max} 字`);
+    }
+    if (pid === 'wechat' && tl > 64) out.blockers.push('微信公众号标题上限 64 字，会被截断');
+    if (pid === 'xhs' && !/!\[[^\]]*\]\([^)]+\)/.test(body)) out.blockers.push('小红书是图片优先平台，正文里至少要有一张图');
+    if (/data:image\//.test(body)) out.warns.push('正文含 base64 内嵌图片，部分平台发布会丢失，建议改用图片链接');
+    if (pid === 'csdn' && !/```/.test(body)) out.warns.push('CSDN 技术文建议附代码块，当前没有');
+    if (r.quality && r.quality.metrics && r.quality.metrics.capped) out.warns.push('质检触发硬门槛（P0 或原文数字缺失），发布前建议复核');
+    return out;
+  }
+
   /* ---------- 批量发布：把已改写平台依次发布 ---------- */
   function doPublishAll(root) {
     const articleId = S().ui.activeArticleId;
@@ -452,25 +591,27 @@ window.CP = window.CP || {};
       const p = M().PLATFORMS.find(x => x.id === pid);
       const acc = accountOf(pid);
       const auto = !!(acc && credOkOf(pid, acc));
+      const pre = preflight(pid, S().ui.rewriteResults[pid]);
       return {
-        pid, name: p.name, color: p.color, acc,
-        mode: auto ? (pid === 'xhs' ? '浏览器自动发布' : '自动发布') : '复制稿'
+        pid, name: p.name, color: p.color, acc, pre,
+        mode: pre.blockers.length ? '已阻断' : (auto ? (pid === 'xhs' ? '浏览器自动发布' : '自动发布') : '复制稿')
       };
     });
-    const autoCount = rows.filter(r => r.mode !== '复制稿').length;
+    const blocked = rows.filter(r => r.pre.blockers.length);
+    const autoCount = rows.filter(r => r.mode !== '复制稿' && r.mode !== '已阻断').length;
 
     ui().openModal(`
       <div class="modal-head">
         <h3>批量发布 ${rows.length} 个平台</h3>
-        <p>${autoCount} 个平台将自动发布，${rows.length - autoCount} 个平台生成复制稿。发布按顺序执行，失败不影响其他平台。</p>
+        <p>${autoCount} 个平台将自动发布，${rows.length - autoCount - blocked.length} 个平台生成复制稿${blocked.length ? `，${blocked.length} 个被发布前检查阻断` : ''}。发布按顺序执行，失败不影响其他平台。</p>
       </div>
       <div class="modal-body" style="padding:10px 26px 14px">
         ${rows.map(r => `
           <div class="article-row" style="cursor:default">
             <span class="dot" style="width:9px;height:9px;border-radius:50%;background:${r.color};flex:none"></span>
             <div class="ar-main"><div class="ar-title">${r.name}</div>
-              <div class="ar-meta">${r.acc ? ui().esc(r.acc.nickname) : '未登录账号'}</div></div>
-            <span class="badge ${r.mode === '复制稿' ? 'badge-gray' : 'badge-ok'}">${r.mode}</span>
+              <div class="ar-meta">${r.pre.blockers.length ? ui().esc(r.pre.blockers[0]) : (r.acc ? ui().esc(r.acc.nickname) : '未登录账号')}</div></div>
+            <span class="badge ${r.mode === '已阻断' ? 'badge-danger' : (r.mode === '复制稿' ? 'badge-gray' : 'badge-ok')}">${r.mode}</span>
           </div>`).join('')}
         <div class="hint" style="margin-top:10px" id="bulk-status">等待开始…</div>
       </div>
@@ -485,9 +626,10 @@ window.CP = window.CP || {};
       const btn = modal.querySelector('#bulk-go');
       const status = modal.querySelector('#bulk-status');
       btn.disabled = true;
-      let ok = 0, copy = 0, failed = [];
+      let ok = 0, copy = 0, failed = [], skipped = [];
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
+        if (row.pre.blockers.length) { skipped.push(row.name); continue; }
         const r = S().ui.rewriteResults[row.pid];
         status.textContent = `正在发布（${i + 1}/${rows.length}）：${row.name}…`;
         const res = await CP.api.publish({
@@ -505,7 +647,7 @@ window.CP = window.CP || {};
       }
       btn.disabled = false;
       btn.innerHTML = ui().icon('check', 15) + ' 完成';
-      status.innerHTML = `完成：自动发布 ${ok} 个，复制稿 ${copy} 个${failed.length ? `，失败 ${failed.length} 个` : ''}`;
+      status.innerHTML = `完成：自动发布 ${ok} 个，复制稿 ${copy} 个${failed.length ? `，失败 ${failed.length} 个` : ''}${skipped.length ? `，跳过 ${skipped.length} 个（发布前检查未通过）` : ''}`;
       if (failed.length) {
         status.innerHTML += `<div style="color:var(--danger);margin-top:6px">${failed.map(f => ui().esc(f)).join('<br>')}</div>`;
       }
