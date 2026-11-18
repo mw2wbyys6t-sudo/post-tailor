@@ -488,6 +488,7 @@ window.CP = window.CP || {};
         <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
           <span class="label" style="margin:0">正文（Markdown）</span>
           <div style="margin-left:auto;display:flex;gap:4px">
+            <button class="btn btn-ghost btn-sm" id="rw-img">${ui().icon('image', 13)} 插入图片</button>
             <button class="btn btn-ghost btn-sm" data-rw-view="edit">编辑</button>
             <button class="btn btn-ghost btn-sm" data-rw-view="preview">预览</button>
           </div>
@@ -509,11 +510,29 @@ window.CP = window.CP || {};
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
 
     const refresh = () => {
-      const chars = bodyEl.value.replace(/\s/g, '').length;
+      const chars = bodyEl.value
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/\s/g, '').length;
       countEl.textContent = `${chars} 字（保存前质检 ${r.score} 分）`;
       if (previewEl.style.display !== 'none') previewEl.innerHTML = ui().renderMd(bodyEl.value);
     };
     bodyEl.addEventListener('input', refresh);
+    modal.querySelector('#rw-img').addEventListener('click', async () => {
+      const picked = await CP.editor.pickImage();
+      if (!picked) return;
+      const start = bodyEl.selectionStart == null ? bodyEl.value.length : bodyEl.selectionStart;
+      const end = bodyEl.selectionEnd == null ? start : bodyEl.selectionEnd;
+      const before = bodyEl.value.slice(0, start);
+      const after = bodyEl.value.slice(end);
+      const pad = before && !/\n$/.test(before) ? '\n\n' : '';
+      const md = `![${picked.alt || '配图'}](${picked.src})`;
+      bodyEl.value = before + pad + md + '\n\n' + after;
+      const pos = (before + pad + md).length;
+      bodyEl.focus();
+      bodyEl.setSelectionRange(pos, pos);
+      refresh();
+    });
     modal.querySelectorAll('[data-rw-view]').forEach(btn => {
       btn.addEventListener('click', () => {
         const isPreview = btn.dataset.rwView === 'preview';
@@ -561,7 +580,10 @@ window.CP = window.CP || {};
     const E = CP.engine;
     const title = String(r.title || '');
     const body = String(r.body || '');
-    const chars = body.replace(/\s/g, '').length;
+    const chars = body
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\s/g, '').length;
     const tl = Array.from(title).length;
 
     if (!title.trim()) out.blockers.push('标题为空');
@@ -574,7 +596,7 @@ window.CP = window.CP || {};
       if (chars > platform.length.max) out.warns.push(`正文 ${chars} 字，超过${platform.name}常见上限 ${platform.length.max} 字`);
     }
     if (pid === 'wechat' && tl > 64) out.blockers.push('微信公众号标题上限 64 字，会被截断');
-    if (pid === 'xhs' && !/!\[[^\]]*\]\([^)]+\)/.test(body)) out.blockers.push('小红书是图片优先平台，正文里至少要有一张图');
+    if (pid === 'xhs' && !/!\[[^\]]*\]\([^)]+\)/.test(body)) out.blockers.push('小红书是图片优先平台，正文里至少要有一张图（可在「编辑此稿」里插入图片）');
     if (/data:image\//.test(body)) out.warns.push('正文含 base64 内嵌图片，部分平台发布会丢失，建议改用图片链接');
     if (pid === 'csdn' && !/```/.test(body)) out.warns.push('CSDN 技术文建议附代码块，当前没有');
     if (r.quality && r.quality.metrics && r.quality.metrics.capped) out.warns.push('质检触发硬门槛（P0 或原文数字缺失），发布前建议复核');

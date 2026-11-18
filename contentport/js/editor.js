@@ -265,7 +265,7 @@ window.CP = window.CP || {};
 
   /* ---------------- 本地图片：读取 + 压缩 ---------------- */
   const IMG_MAX_WIDTH = 1280;
-  const IMG_MAX_BYTES = 900 * 1024; // 单图压缩目标（base64 前的字节量级）
+  const IMG_MAX_BYTES = 400 * 1024; // 单图压缩目标（base64 前的字节量级），避免几张图就撑爆本地存储
 
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
@@ -321,6 +321,72 @@ window.CP = window.CP || {};
       throw new Error('图片过大，压缩后仍超过 1.5MB，请换一张更小的图');
     }
     return { dataUrl: out, width: cw, compressed: true };
+  }
+
+  /* ---------------- 通用图片选择器 ----------------
+     返回 Promise<{src, alt, compressed}|null>；编辑器与改写稿编辑共用。
+     取消返回 null，上传失败时弹窗内提示并保持打开。 */
+  function pickImage() {
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (v) => { if (settled) return; settled = true; resolve(v); };
+      const { close, rootEl } = ui().openModal(`
+        <div class="modal-head">
+          <h3>插入图片</h3>
+          <p>可上传本地图片（自动压缩）或填写图片链接。</p>
+        </div>
+        <div class="modal-body">
+          <label class="label">上传本地图片</label>
+          <input class="input" type="file" id="img-file" accept="image/*" />
+          <div class="hint">JPG / PNG / WebP / GIF。宽度超过 1280 会自动等比缩小，单图压缩到约 400KB 内。</div>
+          <div class="divider"></div>
+          <label class="label">或填写图片链接</label>
+          <input class="input" id="img-url" placeholder="https://…" />
+          <label class="label" style="margin-top:10px">图片描述（可选）</label>
+          <input class="input" id="img-alt" placeholder="用于无障碍与 Markdown alt" />
+          <div class="hint" id="img-status"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-mclose>取消</button>
+          <button class="btn btn-primary" id="img-insert">插入图片</button>
+        </div>`, { width: 520, stack: true, onClose: () => finish(null) });
+
+      const modal = rootEl.querySelector('.modal');
+      const status = modal.querySelector('#img-status');
+      const btn = modal.querySelector('#img-insert');
+      modal.querySelector('[data-mclose]').addEventListener('click', close);
+
+      btn.addEventListener('click', async () => {
+        const file = modal.querySelector('#img-file').files[0];
+        const url = modal.querySelector('#img-url').value.trim();
+        const alt = modal.querySelector('#img-alt').value.trim();
+        if (!file && !url) {
+          status.innerHTML = '<span style="color:var(--danger)">请选择本地图片或填写链接</span>';
+          return;
+        }
+        if (!file) {
+          if (!/^(https?:|data:image\/)/i.test(url)) {
+            status.innerHTML = '<span style="color:var(--danger)">链接需以 http(s) 开头，或为 data:image</span>';
+            return;
+          }
+          finish({ src: url, alt, compressed: false });
+          close();
+          return;
+        }
+        btn.disabled = true;
+        btn.innerHTML = ui().icon('refresh', 15) + ' 处理中…';
+        status.textContent = '正在压缩图片…';
+        try {
+          const out = await compressImage(file);
+          finish({ src: out.dataUrl, alt: alt || file.name.replace(/\.[^.]+$/, ''), compressed: out.compressed });
+          close();
+        } catch (e) {
+          status.innerHTML = `<span style="color:var(--danger)">${esc(e.message || '图片处理失败')}</span>`;
+          btn.disabled = false;
+          btn.innerHTML = '插入图片';
+        }
+      });
+    });
   }
 
   /* ---------------- 编辑器主体 ---------------- */
@@ -760,61 +826,12 @@ window.CP = window.CP || {};
         onEdit();
       }
 
-      function openImageDialog() {
+      async function openImageDialog() {
         captureRange();
-        const { close } = ui().openModal(`
-          <div class="modal-head">
-            <h3>插入图片</h3>
-            <p>可上传本地图片（自动压缩）或填写图片链接。</p>
-          </div>
-          <div class="modal-body">
-            <label class="label">上传本地图片</label>
-            <input class="input" type="file" id="img-file" accept="image/*" />
-            <div class="hint">JPG / PNG / WebP / GIF。宽度超过 1280 会自动等比缩小，单图压缩到约 900KB 内。</div>
-            <div class="divider"></div>
-            <label class="label">或填写图片链接</label>
-            <input class="input" id="img-url" placeholder="https://…" />
-            <label class="label" style="margin-top:10px">图片描述（可选）</label>
-            <input class="input" id="img-alt" placeholder="用于无障碍与 Markdown alt" />
-            <div class="hint" id="img-status"></div>
-          </div>
-          <div class="modal-foot">
-            <button class="btn btn-ghost" data-mclose>取消</button>
-            <button class="btn btn-primary" id="img-insert">插入图片</button>
-          </div>`, { width: 520 });
-
-        const modal = document.querySelector('.modal');
-        const status = modal.querySelector('#img-status');
-        modal.querySelector('[data-mclose]').addEventListener('click', close);
-        const btn = modal.querySelector('#img-insert');
-
-        btn.addEventListener('click', async () => {
-          const file = modal.querySelector('#img-file').files[0];
-          const url = modal.querySelector('#img-url').value.trim();
-          const alt = modal.querySelector('#img-alt').value.trim();
-          if (!file && !url) { ui().toast('请选择本地图片或填写链接', 'warn'); return; }
-
-          if (!file) {
-            if (!/^(https?:|data:image\/)/i.test(url)) { ui().toast('链接需以 http(s) 开头，或为 data:image', 'warn'); return; }
-            insertImage(url, alt);
-            close();
-            return;
-          }
-
-          btn.disabled = true;
-          btn.innerHTML = ui().icon('refresh', 15) + ' 处理中…';
-          status.textContent = '正在压缩图片…';
-          try {
-            const out = await compressImage(file);
-            insertImage(out.dataUrl, alt || file.name.replace(/\.[^.]+$/, ''));
-            ui().toast(out.compressed ? '已压缩并插入图片' : '图片已插入', 'ok');
-            close();
-          } catch (e) {
-            status.innerHTML = `<span style="color:var(--danger)">${esc(e.message || '图片处理失败')}</span>`;
-            btn.disabled = false;
-            btn.innerHTML = '插入图片';
-          }
-        });
+        const picked = await pickImage();
+        if (!picked) return;
+        insertImage(picked.src, picked.alt);
+        ui().toast(picked.compressed ? '已压缩并插入图片' : '图片已插入', 'ok');
       }
 
       /* 富文本被编辑：标记为未同步，避免切模式时覆盖用户改动 */
@@ -946,16 +963,23 @@ window.CP = window.CP || {};
         };
 
         if (isNew) {
-          const created = CP.actions.addArticle({
+          const saved = CP.actions.addArticle({
             ...patch,
             status: '草稿',
             source: '本地编辑',
             createdAt: new Date().toISOString().slice(0, 10)
           });
+          if (!saved.ok) {
+            ui().toast('保存失败：本地存储空间不足，请删掉正文里的大图或清理旧文章后重试', 'warn', 5000);
+            return;
+          }
           ui().toast('文章已创建', 'ok');
-          done(created.id);
+          done(saved.article.id);
         } else {
-          CP.actions.updateArticle(articleId, patch);
+          if (!CP.actions.updateArticle(articleId, patch)) {
+            ui().toast('保存失败：本地存储空间不足，请删掉正文里的大图或清理旧文章后重试', 'warn', 5000);
+            return;
+          }
           ui().toast('文章已保存', 'ok');
           done(articleId);
         }
@@ -1002,6 +1026,7 @@ window.CP = window.CP || {};
   };
 
   /* 供页面与测试复用的转换器 */
+  CP.editor.pickImage = pickImage;
   CP.editor.mdToHtml = mdToHtml;
   CP.editor.htmlToMd = htmlToMd;
   CP.editor.sanitizeHtml = sanitizeHtml;

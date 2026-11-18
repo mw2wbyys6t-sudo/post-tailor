@@ -290,12 +290,17 @@
   }
 
   function check(draft, analysis, plan, platform) {
-    const cov = dimCoverage(draft, analysis, plan, draft.body + '\n' + draft.title);
-    const str = dimStructure(draft, platform, plan);
-    const len = dimLength(draft, platform, plan);
-    const title = dimTitle(draft, platform, plan);
-    const orig = dimOriginality(draft, analysis, platform);
-    const read = dimReadability(draft, analysis);
+    // 图片语法不参与文本类指标：base64 会撑爆字数、拉低可读性并干扰原创度
+    const textDraft = {
+      title: draft.title,
+      body: String(draft.body || '').replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    };
+    const cov = dimCoverage(textDraft, analysis, plan, textDraft.body + '\n' + textDraft.title);
+    const str = dimStructure(textDraft, platform, plan);
+    const len = dimLength(textDraft, platform, plan);
+    const title = dimTitle(textDraft, platform, plan);
+    const orig = dimOriginality(textDraft, analysis, platform);
+    const read = dimReadability(textDraft, analysis);
     const comp = dimCompliance(draft, platform);
 
     const dims = {

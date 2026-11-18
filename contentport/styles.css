@@ -489,6 +489,8 @@ input, select, textarea { font-family: inherit; color: var(--ink); }
 .md-h3 { font-size: 14.5px; }
 .md-p { margin-bottom: 10px; }
 .md-list { margin: 8px 0 12px 18px; display: flex; flex-direction: column; gap: 5px; }
+.md-body img, .rewrite-body img { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0; }
+.md-body a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
 .md-list-num { list-style: decimal; }
 .md-quote {
   border-left: 3px solid var(--primary); background: var(--primary-soft);

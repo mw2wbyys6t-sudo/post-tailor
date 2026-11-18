@@ -70,6 +70,54 @@
     return String(text || '').replace(/\s/g, '').length;
   }
 
+  /* 正文字数：图片与链接语法不计入，避免 base64 把字数撑爆 */
+  function textLength(text) {
+    return charCount(String(text || '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'));
+  }
+
+  /* ---------- 配图：原文图片在改写稿中的保留策略 ----------
+     图片优先平台（小红书、公众号）需要图，文本平台不复制图片，
+     避免 base64 在多平台版本中重复占用本地存储。 */
+  const IMAGE_LIMITS = { xhs: 3, wechat: 2 };
+
+  function extractImages(md) {
+    return String(md || '').match(/!\[[^\]]*\]\((?:https?:\/\/|data:image\/)[^)]+\)/g) || [];
+  }
+
+  function attachImages(body, images, platformId) {
+    const limit = IMAGE_LIMITS[platformId] || 0;
+    if (!limit || !images.length) return body;
+    const picked = images.slice(0, limit);
+    // 按空行切段，跳过标题行与代码块，把图片均匀插入正文段落之间
+    const lines = String(body).split('\n');
+    const blocks = [];
+    let buf = [];
+    let inCode = false;
+    lines.forEach(line => {
+      if (/^```/.test(line.trim())) inCode = !inCode;
+      if (!inCode && !line.trim()) {
+        if (buf.length) { blocks.push(buf.join('\n')); buf = []; }
+        return;
+      }
+      buf.push(line);
+    });
+    if (buf.length) blocks.push(buf.join('\n'));
+    if (!blocks.length) return body;
+
+    const out = [];
+    let inserted = 0;
+    const step = Math.max(1, Math.floor(blocks.length / (picked.length + 1)));
+    blocks.forEach((b, i) => {
+      out.push(b);
+      const isHeading = /^#{1,6}\s/.test(b.trim());
+      if (inserted < picked.length && !isHeading && (i + 1) % step === 0) out.push(picked[inserted++]);
+    });
+    while (inserted < picked.length) out.push(picked[inserted++]);
+    return out.join('\n\n');
+  }
+
   function p0Violation(platform, text) {
     return (platform.taboo || []).some(t => t.level === 'P0' && t.re.test(text));
   }
@@ -209,7 +257,7 @@
       { dim: '开头', from: firstOrig.slice(0, 40) + (firstOrig.length > 40 ? '…' : ''), to: firstNew.slice(0, 60), reason: `匹配${platform.name}受众习惯：${platform.audience.habits[0]}` },
       { dim: '结构', from: '原文结构：' + (analysis.sectionTopics.join(' → ') || '无小标题'), to: plan.structureRoles.map(r => labels[r] || r).join(' → '), reason: `按${platform.name}推荐结构重组内容` },
       { dim: '语气', from: '原文语气', to: platform.audience.tone, reason: `目标受众「${platform.audience.role}」偏好${platform.audience.tone}` },
-      { dim: '字数', from: analysis.charCount + ' 字', to: charCount(draft.body) + ' 字（目标 ' + plan.length.min + '-' + plan.length.max + '）', reason: `平台字数偏好 ${platform.audience.wordPref || plan.length.min + '-' + plan.length.max + ' 字'}` }
+      { dim: '字数', from: analysis.charCount + ' 字', to: textLength(draft.body) + ' 字（目标 ' + plan.length.min + '-' + plan.length.max + '）', reason: `平台字数偏好 ${platform.audience.wordPref || plan.length.min + '-' + plan.length.max + ' 字'}` }
     ];
   }
 
@@ -311,6 +359,9 @@
         errors.push('revise: ' + e.message);
       }
     }
+
+    // 图片优先平台：把原文配图带回改写稿，避免发布前检查因缺图被阻断
+    draft.body = attachImages(draft.body, extractImages(analysis.body), platformId);
 
     return compileResult(analysis, plan, platform, draft, qa, { usedAI, aiCalls, errors });
   }

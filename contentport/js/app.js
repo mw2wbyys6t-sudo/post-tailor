@@ -239,6 +239,7 @@ window.CP = window.CP || {};
       const reader = new FileReader();
       reader.onload = () => {
         try {
+          if (!window.confirm('导入备份会覆盖当前所有文章、发布记录、改写稿与画像，且无法撤销。\n\n建议先「导出备份」保留现有数据。确定继续？')) return;
           const r = CP.actions.importAll(String(reader.result));
           ui().toast(`已恢复：${r.articles} 篇文章、${r.history} 条记录`, 'ok');
           modal.closest('.modal-wrap').querySelector('[data-close]').click();

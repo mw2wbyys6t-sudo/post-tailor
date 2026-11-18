@@ -68,6 +68,22 @@ window.CP = window.CP || {};
     save(LS.history, state.history);
   }
 
+  /* ---------- 文章状态与发布记录保持一致 ----------
+     有任意一条「已发布」记录 → 已发布；否则回到草稿。
+     发布、重试、删除记录后都会调用，避免文章库长期显示旧状态。 */
+  function syncArticleStatus(articleId) {
+    if (!articleId) return;
+    const a = state.articles.find(x => x.id === articleId);
+    if (!a) return;
+    const published = state.history.some(h => h.articleId === articleId && h.status === '已发布');
+    const next = published ? '已发布' : '草稿';
+    if (a.status !== next) {
+      a.status = next;
+      save(LS.articles, state.articles);
+      try { window.dispatchEvent(new Event('cp:articles-updated')); } catch (_) { /* ignore */ }
+    }
+  }
+
   /* ---------- 数据操作 ---------- */
   const actions = {
     getPortrait: () => state.portrait,
@@ -80,17 +96,58 @@ window.CP = window.CP || {};
     addArticle(a) {
       a.id = 'a' + Date.now();
       state.articles.unshift(a);
-      save(LS.articles, state.articles);
-      return a;
+      const ok = save(LS.articles, state.articles);
+      if (!ok) {
+        // 配额不足：回滚内存，避免出现"看起来存了其实没存"
+        state.articles = state.articles.filter(x => x !== a);
+        return { ok: false, article: null };
+      }
+      return { ok: true, article: a };
     },
     updateArticle(id, patch) {
       const a = state.articles.find(x => x.id === id);
-      if (a) {
-        Object.assign(a, patch);
-        if (patch.title || patch.body) delete a.demo; // 用户已编辑，不再是演示数据
-      }
-      save(LS.articles, state.articles);
+      if (!a) return false;
+      const prev = { ...a };
+      Object.assign(a, patch);
+      if (patch.title || patch.body) delete a.demo; // 用户已编辑，不再是演示数据
+      const ok = save(LS.articles, state.articles);
+      if (!ok) Object.assign(a, prev);
+      return ok;
     },
+    /* 删除文章：改写稿、草稿、该文章的待发布任务一并清理；发布记录保留并显示「已删除」 */
+    deleteArticle(id) {
+      const before = state.articles.length;
+      state.articles = state.articles.filter(a => a.id !== id);
+      if (state.articles.length === before) return false;
+      save(LS.articles, state.articles);
+
+      if (state.rewrites && state.rewrites[id]) {
+        delete state.rewrites[id];
+        save(LS.rewrites, state.rewrites);
+      }
+      if (state.drafts && state.drafts[id]) {
+        delete state.drafts[id];
+        save(LS.drafts, state.drafts);
+      }
+      const sched = state.scheduledPublishes.filter(t => t.articleId === id);
+      if (sched.length) {
+        state.scheduledPublishes = state.scheduledPublishes.filter(t => t.articleId !== id);
+        save(LS.scheduled, state.scheduledPublishes);
+      }
+      if (state.ui.activeArticleId === id) {
+        state.ui.activeArticleId = null;
+        state.ui.rewriteResults = {};
+      }
+      return true;
+    },
+    deleteHistory(id) {
+      const rec = state.history.find(x => x.id === id);
+      state.history = state.history.filter(x => x.id !== id);
+      save(LS.history, state.history);
+      if (rec) syncArticleStatus(rec.articleId);
+      return !!rec;
+    },
+    syncArticleStatus,
     /* 按给定顺序重排文章库（拖拽排序用，未提及的文章保持相对顺序在后） */
     reorderArticles(orderedIds) {
       const map = {};
@@ -104,11 +161,13 @@ window.CP = window.CP || {};
     addHistory(rec) {
       state.history.unshift(rec);
       save(LS.history, state.history);
+      syncArticleStatus(rec.articleId);
     },
     updateHistory(id, patch) {
       const h = state.history.find(x => x.id === id);
       if (h) Object.assign(h, patch);
       save(LS.history, state.history);
+      if (h) syncArticleStatus(h.articleId);
     },
     getSettings: () => state.settings,
     saveSettings(s) {
@@ -199,10 +258,23 @@ window.CP = window.CP || {};
       return state.articles.some(a => a.demo) || state.history.some(h => h.demo);
     },
     clearDemoData() {
+      const removed = new Set(state.articles.filter(a => a.demo).map(a => a.id));
       state.articles = state.articles.filter(a => !a.demo);
       state.history = state.history.filter(h => !h.demo);
       save(LS.articles, state.articles);
       save(LS.history, state.history);
+
+      // 演示文章的改写稿、草稿与待发布任务一并清理，避免留下无主数据
+      let rewritesChanged = false;
+      removed.forEach(id => {
+        if (state.rewrites && state.rewrites[id]) { delete state.rewrites[id]; rewritesChanged = true; }
+        if (state.drafts && state.drafts[id]) { delete state.drafts[id]; save(LS.drafts, state.drafts); }
+      });
+      if (rewritesChanged) save(LS.rewrites, state.rewrites);
+      const schedBefore = state.scheduledPublishes.length;
+      state.scheduledPublishes = state.scheduledPublishes.filter(t => !removed.has(t.articleId));
+      if (state.scheduledPublishes.length !== schedBefore) save(LS.scheduled, state.scheduledPublishes);
+
       state.ui.rewriteResults = {};
       state.ui.activeArticleId = null;
     },
@@ -263,6 +335,8 @@ window.CP = window.CP || {};
       save(LS.rewrites, state.rewrites);
       save(LS.sniffDone, state.sniffDone);
       save(LS.settings, state.settings);
+      // 备份可能来自旧版本，用发布记录重新校准文章状态
+      state.articles.forEach(a => syncArticleStatus(a.id));
       state.ui.rewriteResults = {};
       state.ui.activeArticleId = null;
       return {

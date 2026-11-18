@@ -66,7 +66,8 @@
     }
     function flushPara() {
       if (!para.length) return;
-      const text = para.join(' ').trim();
+      // 行内配图不进入正文分析，配图由 pipeline 在成稿后统一回填
+      const text = para.join(' ').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
       if (text) cur.paragraphs.push(text);
       para = [];
     }
@@ -99,6 +100,7 @@
         continue;
       }
       if (!trimmed) { flushPara(); continue; }
+      if (/^!\[[^\]]*\]\([^)]*\)$/.test(trimmed)) { flushPara(); continue; }
 
       const h = trimmed.match(/^(#{1,6})\s+(.+)$/);
       if (h) {
@@ -121,7 +123,8 @@
       const li = trimmed.match(/^(?:\d+[.、)]|[-*+])\s+(.+)$/);
       if (li) {
         flushPara();
-        cur.bullets.push(li[1].trim());
+        const item = li[1].replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim();
+        if (item) cur.bullets.push(item);
         continue;
       }
       const q = trimmed.match(/^>\s?(.*)$/);

@@ -165,7 +165,10 @@ window.CP = window.CP || {};
               <td class="t-title" title="${ui().esc(a ? a.title : '')}">${ui().esc(a ? a.title : '(已删除)')}${h.demo ? ' <span class="tag tag-default" style="font-size:10px">演示</span>' : ''}</td>
               <td><span style="display:inline-flex;align-items:center;gap:7px;font-weight:600"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:${p.color}"></span>${p.name}</span></td>
               <td>${h.accountNickname ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${ui().icon('user', 12)} ${ui().esc(h.accountNickname)}</span>` : '<span style="font-size:11.5px;color:var(--ink-4)">复制稿</span>'}</td>
-              <td><span class="badge ${stCls}">${statusText}</span></td>
+              <td>
+                <span class="badge ${stCls}">${statusText}</span>
+                ${h.failReason ? `<div style="font-size:10.5px;color:var(--danger);margin-top:4px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${ui().esc(h.failReason)}">${ui().esc(h.failReason)}</div>` : ''}
+              </td>
               <td class="t-score" style="color:${h.score >= 90 ? 'var(--ok)' : h.score >= 80 ? 'var(--amber)' : 'var(--ink-3)'}">${h.score || '—'}</td>
               <td>${stat(h.views)}</td>
               <td>${stat(h.likes)}</td>
@@ -179,6 +182,7 @@ window.CP = window.CP || {};
                   ${canPull ? `<button class="btn btn-ghost btn-sm" data-stats="${h.id}">${ui().icon('refresh', 12)} 回拉数据</button>` : ''}
                   ${h.copyContent ? `<button class="btn btn-ghost btn-sm" data-export="${h.id}">${ui().icon('download', 12)} 导出</button>` : ''}
                   ${h.link ? `<a class="btn btn-ghost btn-sm" href="${href}" target="_blank" rel="noopener">${ui().icon('link', 13)} 查看</a>` : ''}
+                  <button class="btn btn-ghost btn-sm" data-del="${h.id}" title="删除记录">${ui().icon('trash', 12)}</button>
                 </div>
               </td>
             </tr>`;
@@ -200,6 +204,24 @@ window.CP = window.CP || {};
     });
     body.querySelectorAll('[data-retry]').forEach(btn => {
       btn.addEventListener('click', () => retryPublish(btn.dataset.retry, btn));
+    });
+    body.querySelectorAll('[data-del]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const rec = S().history.find(x => x.id === btn.dataset.del);
+        if (!rec) return;
+        const a = CP.actions.getArticle(rec.articleId);
+        const p = M().PLATFORMS.find(x => x.id === rec.platformId);
+        const ok = await ui().confirm({
+          title: '删除发布记录',
+          message: `确定删除「${ui().esc(a ? a.title : '已删除文章')}」在 ${ui().esc(p ? p.name : '该平台')} 的这条记录？<br><br>只删除本地记录，不会影响平台上已经发布的内容。`,
+          confirmText: '删除',
+          danger: true
+        });
+        if (!ok) return;
+        CP.actions.deleteHistory(rec.id);
+        renderTable(root);
+        ui().toast('发布记录已删除', 'ok');
+      });
     });
   }
 

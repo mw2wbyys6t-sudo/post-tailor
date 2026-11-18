@@ -34,6 +34,7 @@ window.CP = window.CP || {};
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
     fileText: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
     scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/>',
     eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
@@ -77,9 +78,9 @@ window.CP = window.CP || {};
   }
 
   /* ---------- Modal ---------- */
-  function openModal(html, { width = 560, onClose } = {}) {
+  function openModal(html, { width = 560, onClose, stack = false } = {}) {
     const root = document.getElementById('modal-root');
-    root.innerHTML = '';
+    if (!stack) root.innerHTML = '';
     const wrap = document.createElement('div');
     wrap.className = 'modal-wrap';
     wrap.innerHTML = `
@@ -96,6 +97,27 @@ window.CP = window.CP || {};
     };
     wrap.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
     return { close, rootEl: wrap };
+  }
+
+  /* ---------- 二次确认（危险操作前使用） ---------- */
+  function confirm({ title = '请确认', message = '', confirmText = '确认', cancelText = '取消', danger = false } = {}) {
+    return new Promise(resolve => {
+      let ok = false;
+      const { close, rootEl } = openModal(`
+        <div class="modal-head">
+          <h3>${esc(title)}</h3>
+        </div>
+        <div class="modal-body">
+          <div style="font-size:13.5px;line-height:1.8;color:var(--ink-2)">${message}</div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-mclose>${esc(cancelText)}</button>
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="cf-ok">${esc(confirmText)}</button>
+        </div>`, { width: 460, onClose: () => resolve(ok) });
+      const modal = rootEl.querySelector('.modal');
+      modal.querySelector('[data-mclose]').addEventListener('click', () => { ok = false; close(); });
+      modal.querySelector('#cf-ok').addEventListener('click', () => { ok = true; close(); });
+    });
   }
 
   /* ---------- 通用渲染 helpers ---------- */
@@ -159,9 +181,17 @@ window.CP = window.CP || {};
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  /* markdown 渲染：## 标题 / > 引用 / - 列表 / 表格 / 普通段落 / 代码块 / 加粗 */
+  /* markdown 渲染：## 标题 / 图片 / 链接 / 引用 / 列表 / 表格 / 普通段落 / 代码块 / 加粗 */
   function renderMd(md) {
-    const bold = (s) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    /* 只放行 http(s) 图片与 data:image，避免正文注入任意协议 */
+    const SAFE_IMG = /^(?:https?:\/\/|data:image\/(?:png|jpe?g|gif|webp);base64,)/i;
+    const SAFE_LINK = /^https?:\/\//i;
+    const inline = (s) => esc(s)
+      .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, src) =>
+        SAFE_IMG.test(src) ? `<img src="${src}" alt="${alt}" loading="lazy" />` : m)
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, href) =>
+        SAFE_LINK.test(href) ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>` : m)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     const lines = String(md).split('\n');
     let html = '';
     let inTable = false;
@@ -197,42 +227,42 @@ window.CP = window.CP || {};
           inTable = true;
         }
         if (isHeader) return;
-        html += '<tr>' + cells.map(c => `<td>${bold(esc(c))}</td>`).join('') + '</tr>';
+        html += '<tr>' + cells.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>';
         return;
       }
       if (inTable && !line.startsWith('|')) closeTable();
 
       if (line.startsWith('## ')) {
         closeList(); closeTable();
-        html += `<h3 class="md-h">${esc(line.slice(3))}</h3>`;
+        html += `<h3 class="md-h">${inline(line.slice(3))}</h3>`;
         return;
       }
       if (line.startsWith('### ')) {
         closeList(); closeTable();
-        html += `<h4 class="md-h md-h3">${esc(line.slice(4))}</h4>`;
+        html += `<h4 class="md-h md-h3">${inline(line.slice(4))}</h4>`;
         return;
       }
       if (line.startsWith('> ')) {
         closeList();
-        html += `<blockquote class="md-quote">${bold(esc(line.slice(2)))}</blockquote>`;
+        html += `<blockquote class="md-quote">${inline(line.slice(2))}</blockquote>`;
         return;
       }
       if (line.startsWith('- ') || line.startsWith('* ')) {
         closeTable();
         if (!inList) { html += '<ul class="md-list">'; inList = true; }
-        html += `<li>${bold(esc(line.slice(2)))}</li>`;
+        html += `<li>${inline(line.slice(2))}</li>`;
         return;
       }
       if (line.startsWith('1. ') || /^\d+\.\s/.test(line)) {
         closeTable();
         if (!inList) { html += '<ul class="md-list md-list-num">'; inList = true; }
-        html += `<li>${bold(esc(line.replace(/^\d+\.\s/, '')))}</li>`;
+        html += `<li>${inline(line.replace(/^\d+\.\s/, ''))}</li>`;
         return;
       }
       if (!line) { closeList(); closeTable(); return; }
 
       closeList(); closeTable();
-      html += `<p class="md-p">${bold(esc(line))}</p>`;
+      html += `<p class="md-p">${inline(line)}</p>`;
     });
     closeList(); closeTable();
     if (inCode) html += `<pre class="md-code"><code>${esc(codeBuf.join('\n'))}</code></pre>`;
@@ -246,7 +276,7 @@ window.CP = window.CP || {};
     return `<div class="skeleton">${s}</div>`;
   }
 
-  window.CP.ui = { icon, toast, openModal, esc, fmtNum, renderMd, skeleton, ICONS, lineChart, downloadFile };
+  window.CP.ui = { icon, toast, openModal, confirm, esc, fmtNum, renderMd, skeleton, ICONS, lineChart, downloadFile };
 
   /* ---------- 页面注册表（供各页面脚本在加载时注册） ---------- */
   const PAGES = {};

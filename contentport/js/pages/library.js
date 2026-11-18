@@ -128,6 +128,7 @@ window.CP = window.CP || {};
               <div class="ac-foot">
                 <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${a.status}</span>
                 <span style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${a.wordCount} 字 · ${a.createdAt}</span>
+                <button class="btn btn-ghost btn-sm" data-aid="${a.id}" data-act="delete" title="删除文章">${ui().icon('trash', 13)}</button>
                 <button class="btn btn-ghost btn-sm" data-aid="${a.id}" data-act="edit">${ui().icon('pen', 13)} 编辑</button>
                 <button class="btn btn-primary btn-sm" data-aid="${a.id}" data-act="distribute">${ui().icon('send', 13)} 分发</button>
               </div>
@@ -148,6 +149,23 @@ window.CP = window.CP || {};
       });
       wrap.querySelectorAll('[data-act="edit"]').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); editArticleModal(btn.dataset.aid); });
+      });
+      wrap.querySelectorAll('[data-act="delete"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const a = CP.actions.getArticle(btn.dataset.aid);
+          if (!a) return;
+          const ok = await ui().confirm({
+            title: '删除文章',
+            message: `确定删除「${ui().esc(a.title)}」？<br><br>这篇文章的改写稿、草稿和待发布任务会一并删除；已生成的发布记录会保留，并标记为「已删除」。此操作无法撤销。`,
+            confirmText: '删除',
+            danger: true
+          });
+          if (!ok) return;
+          CP.actions.deleteArticle(a.id);
+          ui().toast('文章已删除', 'ok');
+          renderList(root);
+        });
       });
       /* 拖拽排序 */
       cards.forEach(card => {
@@ -218,6 +236,7 @@ window.CP = window.CP || {};
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>关闭</button>
+        <button class="btn btn-danger" id="d-detail-delete">${ui().icon('trash', 15)} 删除</button>
         <button class="btn btn-ghost" id="d-detail-edit">${ui().icon('pen', 15)} 编辑</button>
         <button class="btn btn-primary" id="d-detail-distribute">${ui().icon('send', 15)} 去分发</button>
       </div>`, { width: 720 });
@@ -232,6 +251,13 @@ window.CP = window.CP || {};
     modal.querySelector('#d-detail-edit').addEventListener('click', () => {
       modal.closest('.modal-wrap').querySelector('[data-close]').click();
       editArticleModal(aid);
+    });
+    modal.querySelector('#d-detail-delete').addEventListener('click', () => {
+      if (!window.confirm(`确定删除「${a.title}」？\n\n改写稿、草稿和待发布任务会一并删除；已生成的发布记录会保留。此操作无法撤销。`)) return;
+      CP.actions.deleteArticle(aid);
+      modal.closest('.modal-wrap').querySelector('[data-close]').click();
+      ui().toast('文章已删除', 'ok');
+      if (location.hash.includes('library')) CP.refreshPage();
     });
   };
 

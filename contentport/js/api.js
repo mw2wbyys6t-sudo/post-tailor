@@ -230,15 +230,16 @@ window.CP = window.CP || {};
         summary: (body || '').slice(0, 60) + '……',
         category: category || '技术干货',
         tags: Array.isArray(tags) ? tags.slice(0, 5) : [],
-        wordCount: Math.max(wordCount, 300),
+        wordCount,
         status: '草稿',
         source: '本地导入',
         createdAt: new Date().toISOString().slice(0, 10),
         readMin: Math.max(1, Math.round(wordCount / 400)),
         body
       };
-      CP.actions.addArticle(article);
-      return { code: 0, data: article };
+      const saved = CP.actions.addArticle(article);
+      if (!saved.ok) throw new Error('本地存储空间不足，文章未能保存');
+      return { code: 0, data: saved.article };
     },
 
     /* --------------------------------------------------------
@@ -475,7 +476,7 @@ window.CP = window.CP || {};
         link: '',
         views: 0,
         likes: 0,
-        score: score != null ? score : 80 + Math.round(Math.random() * 15)
+        score: score != null ? score : null
       };
       if (algorithm) rec.algorithm = algorithm;
 
