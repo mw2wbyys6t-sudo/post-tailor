@@ -80,7 +80,11 @@
   /* ---------- 配图：原文图片在改写稿中的保留策略 ----------
      图片优先平台（小红书、公众号）需要图，文本平台不复制图片，
      避免 base64 在多平台版本中重复占用本地存储。 */
-  const IMAGE_LIMITS = { xhs: 3, wechat: 2 };
+  const IMAGE_LIMITS = { xhs: 3, wechat: 2, article: 50 };
+
+  function stripImages(text) {
+    return String(text || '').replace(/!\[[^\]]*\]\([^)]*\)/g, '');
+  }
 
   function extractImages(md) {
     return String(md || '').match(/!\[[^\]]*\]\((?:https?:\/\/|data:image\/)[^)]+\)/g) || [];
@@ -186,7 +190,7 @@
       '【必须保留的原文要点】',
       plan.mustKeep.map(k => '- ' + k).join('\n'),
       '【原文】',
-      analysis.body.slice(0, 12000),
+      stripImages(analysis.body).slice(0, 12000),
       '请输出该平台的原生改写稿 JSON。'
     ].join('\n\n');
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
@@ -204,7 +208,7 @@
       '【当前稿件】',
       draft.body,
       '【原文（事实来源）】',
-      analysis.body.slice(0, 10000),
+      stripImages(analysis.body).slice(0, 10000),
       '请输出修复后的完整 JSON。'
     ].join('\n\n');
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
@@ -366,5 +370,5 @@
     return compileResult(analysis, plan, platform, draft, qa, { usedAI, aiCalls, errors });
   }
 
-  return { run, ENGINE_VERSION, parseJsonLoose, validateDraft, withLimit };
+  return { run, ENGINE_VERSION, parseJsonLoose, validateDraft, withLimit, extractImages, stripImages, attachImages, IMAGE_LIMITS };
 });

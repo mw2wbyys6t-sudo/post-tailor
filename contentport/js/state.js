@@ -14,7 +14,8 @@ window.CP = window.CP || {};
     sniffDone: 'cp.sniffDone.v1',
     scheduled: 'cp.scheduled.v1',
     rewrites: 'cp.rewrites.v1',
-    drafts: 'cp.drafts.v1'
+    drafts: 'cp.drafts.v1',
+    aiUsage: 'cp.aiUsage.v1'
   };
 
   function load(key, fallback) {
@@ -35,18 +36,22 @@ window.CP = window.CP || {};
     }
   }
 
+  /* AI 润色每日额度（本机账号维度） */
+  const AI_POLISH_LIMIT = 20;
+
   const state = {
     portrait: load(LS.portrait, null),            // 用户画像（问答结果）
     articles: load(LS.articles, null),            // 文章库（含用户新增）
     history: load(LS.history, null),              // 发布记录
     settings: load(LS.settings, {
-      ai: { baseUrl: '', apiKey: '', model: '' },
+      ai: { baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat' },
       autoPull: { enabled: true, interval: 30 }
     }),
     sniffDone: load(LS.sniffDone, false),         // 是否完成过嗅探
     scheduledPublishes: load(LS.scheduled, []),   // 定时发布任务队列
     rewrites: load(LS.rewrites, {}),              // 改写稿持久化 { articleId: { platformId: result } }
     drafts: load(LS.drafts, {}),                  // 编辑器草稿 { articleId|'new': { title, body, ... } }
+    aiUsage: load(LS.aiUsage, { date: '', polish: 0 }), // AI 润色每日用量
     /* ---- 会话内 UI 状态 ---- */
     ui: {
       activeArticleId: null,                       // 分发工作台选中的文章
@@ -58,6 +63,13 @@ window.CP = window.CP || {};
     LS
   };
 
+  /* 默认接入 DeepSeek：老版本设置里 Base URL / 模型为空时补齐，填 Key 即可用 */
+  if (!state.settings.ai || typeof state.settings.ai !== 'object') state.settings.ai = { apiKey: '' };
+  let aiDefaultsChanged = false;
+  if (!state.settings.ai.baseUrl) { state.settings.ai.baseUrl = 'https://api.deepseek.com'; aiDefaultsChanged = true; }
+  if (!state.settings.ai.model) { state.settings.ai.model = 'deepseek-chat'; aiDefaultsChanged = true; }
+  if (aiDefaultsChanged) save(LS.settings, state.settings);
+
   /* ---------- 首次启动：内置样例数据，显式标记为演示 ---------- */
   if (!state.articles) {
     state.articles = CP.mock.ARTICLES.map(a => ({ ...a, demo: true }));
@@ -66,6 +78,12 @@ window.CP = window.CP || {};
   if (!state.history) {
     state.history = CP.mock.HISTORY.map(h => ({ ...h, demo: true }));
     save(LS.history, state.history);
+  }
+
+  /* 本地日期键：额度按用户所在时区的自然日重置 */
+  function todayKey() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   /* ---------- 文章状态与发布记录保持一致 ----------
@@ -173,6 +191,36 @@ window.CP = window.CP || {};
     saveSettings(s) {
       state.settings = s;
       save(LS.settings, s);
+    },
+    /* ---------- AI 润色每日额度（本机账号，20 次/天） ---------- */
+    aiPolishUsage() {
+      const today = todayKey();
+      if (!state.aiUsage || state.aiUsage.date !== today) {
+        state.aiUsage = { date: today, polish: 0 };
+        save(LS.aiUsage, state.aiUsage);
+      }
+      const used = Math.max(0, Number(state.aiUsage.polish) || 0);
+      return {
+        date: today,
+        used,
+        limit: AI_POLISH_LIMIT,
+        remaining: Math.max(0, AI_POLISH_LIMIT - used),
+        allowed: used < AI_POLISH_LIMIT
+      };
+    },
+    consumeAiPolish() {
+      const u = actions.aiPolishUsage();
+      if (!u.allowed) return u;
+      state.aiUsage.polish = u.used + 1;
+      save(LS.aiUsage, state.aiUsage);
+      const used = state.aiUsage.polish;
+      return {
+        date: u.date,
+        used,
+        limit: AI_POLISH_LIMIT,
+        remaining: Math.max(0, AI_POLISH_LIMIT - used),
+        allowed: used < AI_POLISH_LIMIT
+      };
     },
     /* ---- 定时发布队列 ---- */
     getScheduled: () => state.scheduledPublishes,
@@ -328,6 +376,9 @@ window.CP = window.CP || {};
         autoPull: incoming.autoPull || { enabled: true, interval: 30 },
         accounts: incoming.accounts || {}
       };
+      // 备份可能来自旧版本：AI 配置缺省时回落到 DeepSeek
+      if (!state.settings.ai.baseUrl) state.settings.ai.baseUrl = 'https://api.deepseek.com';
+      if (!state.settings.ai.model) state.settings.ai.model = 'deepseek-chat';
       save(LS.portrait, state.portrait);
       save(LS.articles, state.articles);
       save(LS.history, state.history);
@@ -349,4 +400,5 @@ window.CP = window.CP || {};
 
   CP.state = state;
   CP.actions = actions;
+  CP.AI_POLISH_LIMIT = AI_POLISH_LIMIT;
 })();

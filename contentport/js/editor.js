@@ -412,6 +412,7 @@ window.CP = window.CP || {};
           </div>
           <div class="ed-actions">
             <span class="ed-save-state" id="ed-save-state">未保存</span>
+            <button class="btn btn-soft btn-sm" id="ed-polish" title="用 AI 润色当前文章">${ui().icon('sparkles', 14)} AI 润色 <span id="ed-polish-left"></span></button>
             <button class="btn btn-ghost btn-sm" id="ed-cancel">取消</button>
             <button class="btn btn-primary btn-sm" id="ed-save">${ui().icon('check', 14)} 保存文章</button>
           </div>
@@ -482,7 +483,9 @@ window.CP = window.CP || {};
         cat: root.querySelector('#ed-cat'),
         tags: root.querySelector('#ed-tags'),
         draftBar: root.querySelector('#ed-draft-bar'),
-        draftTxt: root.querySelector('#ed-draft-txt')
+        draftTxt: root.querySelector('#ed-draft-txt'),
+        polish: root.querySelector('#ed-polish'),
+        polishLeft: root.querySelector('#ed-polish-left')
       };
 
       el.title.value = article ? article.title : '';
@@ -916,6 +919,123 @@ window.CP = window.CP || {};
         applyMode();
       }
 
+      /* ---------- AI 润色（每日 20 次） ---------- */
+      function refreshPolishQuota() {
+        const u = CP.actions.aiPolishUsage();
+        el.polishLeft.textContent = u.remaining + '/' + u.limit;
+        el.polish.disabled = !u.allowed;
+        el.polish.title = u.allowed
+          ? `用 AI 润色当前文章（今日剩余 ${u.remaining} 次）`
+          : '今日 AI 润色次数已用完，明天再来';
+      }
+
+      async function openPolish() {
+        const title = el.title.value.trim();
+        const body = currentMd().trim();
+        if (!title) { ui().toast('请先填写文章标题', 'warn'); el.title.focus(); return; }
+        if (!body) { ui().toast('请先写正文，再使用 AI 润色', 'warn'); return; }
+
+        const ready = await CP.api.isAiReady();
+        if (!ready) {
+          const go = await ui().confirm({
+            title: '还未配置 DeepSeek',
+            message: 'AI 润色需要 DeepSeek API Key。Key 会加密保存在系统钥匙串，不会上传。<br><br>现在去设置里填写？',
+            confirmText: '去设置'
+          });
+          if (go && typeof CP.openSettings === 'function') CP.openSettings();
+          return;
+        }
+
+        const usage = CP.actions.aiPolishUsage();
+        if (!usage.allowed) {
+          ui().toast(`今日 AI 润色次数已用完（${usage.limit} 次/天），明天再试`, 'warn');
+          refreshPolishQuota();
+          return;
+        }
+
+        const old = el.polish.innerHTML;
+        el.polish.disabled = true;
+        el.polish.innerHTML = ui().icon('refresh', 14) + ' 润色中…';
+        let res;
+        try {
+          res = await CP.api.aiPolishArticle({ title, body });
+        } catch (e) {
+          res = { code: 1, msg: e.message || 'AI 润色失败' };
+        }
+        el.polish.innerHTML = old;
+        refreshPolishQuota();
+
+        if (res.code === 2) {
+          ui().toast(res.msg || '请先在设置里配置 DeepSeek API Key', 'warn', 4200);
+          if (typeof CP.openSettings === 'function') CP.openSettings();
+          return;
+        }
+        if (res.code !== 0) {
+          ui().toast(res.msg || 'AI 润色失败', 'warn', 4800);
+          return;
+        }
+        showPolishResult(res.data, body);
+      }
+
+      function showPolishResult(data, oldBody) {
+        const usage = CP.actions.aiPolishUsage();
+        const missing = data.missingNumbers || [];
+        const { close, rootEl } = ui().openModal(`
+          <div class="modal-head">
+            <h3>AI 润色完成</h3>
+            <p>${ui().esc(data.notes || '已优化表达，保留原有事实与结构。')}</p>
+          </div>
+          <div class="modal-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+              <span class="tag tag-default">字数 ${data.originalLength} → ${data.polishedLength}</span>
+              <span class="tag tag-default">今日剩余 ${usage.remaining}/${usage.limit}</span>
+              ${missing.length
+                ? `<span class="tag" style="background:var(--amber-soft);color:var(--amber)">待核对数字：${ui().esc(missing.join('、'))}</span>`
+                : `<span class="tag" style="background:var(--ok-soft);color:var(--ok)">关键数字已保留</span>`}
+            </div>
+            <div class="hint" style="margin-bottom:10px">润色后标题：<b style="color:var(--ink)">${ui().esc(data.title)}</b></div>
+            <div class="polish-compare">
+              <div>
+                <div class="label">润色前</div>
+                <div class="md-body polish-pane">${ui().renderMd(oldBody)}</div>
+              </div>
+              <div>
+                <div class="label">润色后</div>
+                <div class="md-body polish-pane">${ui().renderMd(data.body)}</div>
+              </div>
+            </div>
+            ${missing.length ? `<div class="hint" style="color:var(--amber);margin-top:10px">有数字未在润色稿中出现，替换前请确认是否影响事实准确性。</div>` : ''}
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-ghost" data-mclose>取消</button>
+            <button class="btn btn-ghost" id="pol-copy">${ui().icon('copy', 14)} 复制润色稿</button>
+            <button class="btn btn-primary" id="pol-apply">${ui().icon('check', 14)} 替换正文</button>
+          </div>`, { width: 880 });
+
+        const modal = rootEl.querySelector('.modal');
+        modal.querySelector('[data-mclose]').addEventListener('click', close);
+        modal.querySelector('#pol-copy').addEventListener('click', () => {
+          const text = `${data.title}\n\n${data.body}`;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => ui().toast('润色稿已复制', 'ok')).catch(() => ui().toast('复制失败，请手动选择', 'warn'));
+          } else {
+            ui().toast('当前环境不支持剪贴板', 'warn');
+          }
+        });
+        modal.querySelector('#pol-apply').addEventListener('click', () => {
+          el.title.value = data.title;
+          bodyMd = data.body;
+          el.mdSrc.value = data.body;
+          el.rich.innerHTML = mdToHtml(data.body);
+          el.rich.setAttribute('data-synced', '1');
+          if (mode === 'md') renderPreview();
+          updateCount();
+          markDirty();
+          close();
+          ui().toast('已应用 AI 润色稿，记得保存文章', 'ok');
+        });
+      }
+
       /* ---------- 事件 ---------- */
       root.querySelectorAll('.ed-mode').forEach(b => {
         b.addEventListener('click', () => switchMode(b.dataset.mode));
@@ -939,6 +1059,8 @@ window.CP = window.CP || {};
       });
       root.querySelector('#ed-cancel').addEventListener('click', close);
       root.querySelector('#ed-save').addEventListener('click', save);
+      el.polish.addEventListener('click', openPolish);
+      refreshPolishQuota();
 
       /* ---------- 保存 ---------- */
       function save() {

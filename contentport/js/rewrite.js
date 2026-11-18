@@ -200,12 +200,12 @@ ${closing}`;
     }
   }
 
-  /* 适配度评分：由平台 radar + 文章匹配度合成 */
+  /* 适配度评分：由平台 radar + 文章匹配度合成（确定性，不加随机抖动） */
   function genScore(article, pid) {
     const plat = M().PLATFORMS.find(p => p.id === pid);
     const base = Math.round((plat.radar.info + plat.radar.depth) / 2);
     const bonus = article.status === '已发布' ? 4 : 0;
-    return Math.min(97, base - 6 + bonus + Math.round(Math.random() * 6));
+    return Math.min(97, base - 6 + bonus);
   }
 
   function genRewrite(article, pid) {

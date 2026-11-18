@@ -689,7 +689,7 @@ body.editing { overflow: hidden; }
   font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 7px;
 }
 .ed-mode.on { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-sm); }
-.ed-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+.ed-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
 .ed-save-state { font-size: 11.5px; color: var(--ink-3); }
 .ed-save-state.dirty { color: var(--amber); }
 
@@ -781,6 +781,9 @@ body.editing { overflow: hidden; }
   font-family: var(--font-mono); font-size: 12px; overflow: auto; margin: 12px 0; line-height: 1.7;
 }
 .ed-rich img, .ed-md-preview img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+.polish-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.polish-pane { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--surface); }
+@media (max-width: 760px) { .polish-compare { grid-template-columns: 1fr; } }
 .ed-rich table, .ed-md-preview table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12.5px; }
 .ed-rich td, .ed-rich th, .ed-md-preview td, .ed-md-preview th { border: 1px solid var(--border); padding: 8px 12px; }
 .ed-rich hr { border: none; border-top: 1px dashed var(--border-strong); margin: 18px 0; }

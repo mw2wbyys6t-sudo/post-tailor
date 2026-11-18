@@ -12,6 +12,13 @@ gif-tools/
 Thumbs.db
 *.log
 
+# 本地密钥与私有配置（绝不提交）
+.env
+.env.*
+*.secret
+*.secret.*
+contentport/.env.local
+
 # 工具缓存
 .trae-html-share-packages/
 .screenshots/

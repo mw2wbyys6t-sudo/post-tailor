@@ -58,7 +58,7 @@ window.CP = window.CP || {};
   function renderScheduled(root) {
     const panel = root.querySelector('#sched-panel');
     if (!panel) return;
-    const tasks = S().scheduledPublishes.filter(t => t.status === 'pending' || t.status === 'publishing' || t.status === 'missed');
+    const tasks = S().scheduledPublishes.filter(t => ['pending', 'publishing', 'missed', 'failed'].includes(t.status));
     if (!tasks.length) { panel.innerHTML = ''; return; }
     panel.innerHTML = `
       <div class="card">
@@ -73,17 +73,19 @@ window.CP = window.CP || {};
               ? '<span class="badge badge-warn">发布中…</span>'
               : t.status === 'missed'
                 ? '<span class="badge badge-danger">已错过</span>'
-                : '<span class="badge badge-gray">等待中</span>';
+                : t.status === 'failed'
+                  ? '<span class="badge badge-danger">未通过检查</span>'
+                  : '<span class="badge badge-gray">等待中</span>';
             return `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px dashed var(--border)">
               <span class="dot" style="width:10px;height:10px;border-radius:50%;background:${p.color};flex:none"></span>
               <div style="flex:1;min-width:0">
                 <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ui().esc(t.title)}</div>
-                <div style="font-size:11.5px;color:var(--ink-3)">${p.name} · ${String(t.scheduledAt).replace('T', ' ')} · ${t.status === 'missed' ? ui().esc(t.error || '已错过') : countdown(t.scheduledAt)}</div>
+                <div style="font-size:11.5px;color:var(--ink-3)">${p.name} · ${String(t.scheduledAt).replace('T', ' ')} · ${(t.status === 'missed' || t.status === 'failed') ? ui().esc(t.error || (t.status === 'missed' ? '已错过' : '未通过发布前检查')) : countdown(t.scheduledAt)}</div>
               </div>
               ${badge}
               ${t.status === 'pending' ? `<button class="btn btn-ghost btn-sm" data-cancel="${t.id}">${ui().icon('x', 13)} 取消</button>` : ''}
-              ${t.status === 'missed' ? `<button class="btn btn-ghost btn-sm" data-dismiss="${t.id}">${ui().icon('x', 13)} 移除</button>` : ''}
+              ${(t.status === 'missed' || t.status === 'failed') ? `<button class="btn btn-ghost btn-sm" data-dismiss="${t.id}">${ui().icon('x', 13)} 移除</button>` : ''}
             </div>`;
           }).join('')}
         </div>

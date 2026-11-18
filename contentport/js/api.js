@@ -71,6 +71,10 @@ window.CP = window.CP || {};
     async clear(platformId) {
       return vault.clearRaw('platform:' + platformId);
     },
+    /* 当前凭据存储模式：keychain（系统钥匙串）/ memory（浏览器预览，仅本次会话） */
+    mode() {
+      return hasKeychain() ? 'keychain' : 'memory';
+    },
     /* AI Key 同样走保险库，不再明文写 localStorage */
     async getAiKey() {
       const stored = await vault.getRaw('ai:key');
@@ -117,6 +121,8 @@ window.CP = window.CP || {};
   /* ========================================================
      AI 调用基础（OpenAI 兼容 /chat/completions）
      ======================================================== */
+  const AI_TIMEOUT_MS = 90000;
+
   async function aiChat(messages, { json = false, temperature = 0.7, maxTokens = 4000 } = {}) {
     const s = S().settings.ai;
     const apiKey = await vault.getAiKey();
@@ -132,25 +138,41 @@ window.CP = window.CP || {};
       ...(json ? { response_format: { type: 'json_object' } } : {})
     };
 
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        if (controller) controller.abort();
+        reject(new Error('AI 调用超时（90 秒），请检查网络后重试'));
+      }, AI_TIMEOUT_MS);
+    });
+
     let data;
-    if (window.electronAPI && typeof window.electronAPI.callAI === 'function') {
-      // Electron：主进程代理调用（无 CORS 限制，Key 不出本机）
-      data = await window.electronAPI.callAI({ url, body, apiKey });
-    } else {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify(body)
-      });
-      if (!resp.ok) {
-        let msg = 'AI 请求失败 (' + resp.status + ')';
-        try {
-          const e = await resp.json();
-          msg += '：' + (e.error?.message || (e.error?.type || ''));
-        } catch (_) { /* ignore */ }
-        throw new Error(msg);
-      }
-      data = await resp.json();
+    try {
+      const work = (async () => {
+        if (window.electronAPI && typeof window.electronAPI.callAI === 'function') {
+          // Electron：主进程代理调用（无 CORS 限制，Key 不出本机）
+          return window.electronAPI.callAI({ url, body, apiKey });
+        }
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+          body: JSON.stringify(body),
+          signal: controller ? controller.signal : undefined
+        });
+        if (!resp.ok) {
+          let msg = 'AI 请求失败 (' + resp.status + ')';
+          try {
+            const e = await resp.json();
+            msg += '：' + (e.error?.message || (e.error?.type || ''));
+          } catch (_) { /* ignore */ }
+          throw new Error(msg);
+        }
+        return resp.json();
+      })();
+      data = await Promise.race([work, timeout]);
+    } finally {
+      clearTimeout(timer);
     }
 
     const content = data?.choices?.[0]?.message?.content || '';
@@ -171,6 +193,23 @@ window.CP = window.CP || {};
   }
 
   const clamp = (n, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Number(n) || 0));
+
+  /* 正文字数：忽略图片与链接语法，避免 base64 干扰 */
+  const plainLen = (text) => String(text || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s/g, '').length;
+
+  /* 关键数字核对：只关注带单位的数字，润色前后应保持一致 */
+  function keyNumbers(text) {
+    return (String(text || '').match(/\d+(?:\.\d+)?\s*(?:%|％|倍|分钟|小时|天|个月|年|毫秒|ms|MB|GB|TB|QPS|万|千|条|次|个|人|元|步|层|张|字|份|款)/g) || [])
+      .map(s => s.replace(/\s+/g, ''));
+  }
+
+  function missingKeyNumbers(original, polished) {
+    const out = new Set(keyNumbers(polished));
+    return [...new Set(keyNumbers(original))].filter(n => !out.has(n)).slice(0, 8);
+  }
 
   const api = {
     /* --------------------------------------------------------
@@ -327,39 +366,117 @@ window.CP = window.CP || {};
       const prev = S().ui.rewriteResults[platformId];
       const plat = M().PLATFORMS.find(p => p.id === platformId);
       if (!article || !plat) return { code: 1, msg: '文章或平台不存在' };
+      if (!prev) return { code: 1, msg: '请先点击「智能改写」生成该平台版本，再做 AI 深度打磨' };
 
-      const content = await aiChat([
-        {
-          role: 'system',
-          content: '你是资深平台内容润色专家。请在保留原意与结构的基础上，把文稿打磨得更契合平台受众：优化节奏、钩子、金句与可读性。输出必须是合法 JSON：{"title":"新标题","body":"润色后的 markdown 正文","score":0-100,"notes":"1-2 句说明本次打磨重点"}。不要输出 JSON 以外的任何文字。'
-        },
-        {
-          role: 'user',
-          content: `【平台】${plat.name}（受众：${plat.audience.role}，语气偏好：${plat.audience.tone}）\n【当前标题】${prev ? prev.title : article.title}\n【当前正文】\n${prev ? prev.body : article.body}`
-        }
-      ], { json: true, temperature: 0.7, maxTokens: 5000 });
+      const P = CP.engine && CP.engine.pipeline;
+      const images = P && P.extractImages ? P.extractImages(prev.body) : [];
+      const cleanBody = P && P.stripImages ? P.stripImages(prev.body) : prev.body;
 
-      const parsed = parseJsonLoose(content);
-      if (prev && parsed.title) {
-        prev.title = String(parsed.title).slice(0, 80);
-        if (parsed.body) prev.body = parsed.body;
-        // 润色后必须重新本地质检，不能沿用模型自报分数
-        const engine = CP.engine;
-        if (engine && engine.analysis && engine.planner && engine.quality) {
-          const analysis = engine.analysis.analyze(article);
-          const platform = engine.strategies.getPlatform(platformId);
-          const plan = engine.planner.buildPlan(analysis, platformId, S().portrait || {});
-          const qa = engine.quality.check({ title: prev.title, body: prev.body }, analysis, plan, platform);
-          prev.quality = qa;
-          prev.score = qa.total;
-          prev.engine = prev.engine || 'hybrid';
-          prev.aiGenerated = true;
-        } else if (parsed.score) {
-          prev.score = clamp(parsed.score);
-        }
-        CP.actions.setRewriteResult(platformId, prev);
+      let parsed;
+      try {
+        const content = await aiChat([
+          {
+            role: 'system',
+            content: '你是资深平台内容润色专家。请在保留原意、事实与数字的基础上，把文稿打磨得更契合平台受众：优化节奏、钩子、金句与可读性。不得编造原文没有的数据或案例。输出必须是合法 JSON：{"title":"新标题","body":"润色后的 markdown 正文","score":0-100,"notes":"1-2 句说明本次打磨重点"}。不要输出 JSON 以外的任何文字。'
+          },
+          {
+            role: 'user',
+            content: `【平台】${plat.name}（受众：${plat.audience.role}，语气偏好：${plat.audience.tone}）\n【当前标题】${prev.title}\n【当前正文】\n${cleanBody}`
+          }
+        ], { json: true, temperature: 0.6, maxTokens: 5000 });
+        parsed = parseJsonLoose(content);
+      } catch (e) {
+        return { code: 1, msg: e.message || 'AI 深度改写失败' };
       }
+
+      if (!parsed || !parsed.title || !parsed.body) return { code: 1, msg: 'AI 返回内容不完整，请重试' };
+
+      prev.title = String(parsed.title).slice(0, 80);
+      const cleanNew = P && P.stripImages ? P.stripImages(String(parsed.body)) : String(parsed.body);
+      prev.body = P && P.attachImages ? P.attachImages(cleanNew, images, 'article') : cleanNew;
+      // 润色后必须重新本地质检，不能沿用模型自报分数
+      const engine = CP.engine;
+      if (engine && engine.analysis && engine.planner && engine.quality) {
+        const analysis = engine.analysis.analyze(article);
+        const platform = engine.strategies.getPlatform(platformId);
+        const plan = engine.planner.buildPlan(analysis, platformId, S().portrait || {});
+        const qa = engine.quality.check({ title: prev.title, body: prev.body }, analysis, plan, platform);
+        prev.quality = qa;
+        prev.score = qa.total;
+        prev.engine = prev.engine || 'hybrid';
+        prev.aiGenerated = true;
+      } else if (parsed.score) {
+        prev.score = clamp(parsed.score);
+      }
+      CP.actions.setRewriteResult(platformId, prev);
       return { code: 0, msg: 'AI 深度改写完成', useRule: false, data: parsed };
+    },
+
+    /* --------------------------------------------------------
+       POST /api/ai/polish  —— AI 润色文章（每日 20 次）
+       body: { title, body }
+       规则：成功后扣次数；失败/输出异常不扣；图片不进提示词，润色后回填
+       -------------------------------------------------------- */
+    async aiPolishArticle({ title = '', body = '' } = {}) {
+      const settings = S().settings.ai;
+      const apiKey = await vault.getAiKey();
+      const usage = CP.actions.aiPolishUsage();
+      if (!apiKey || !settings.baseUrl) {
+        return { code: 2, msg: '请先在「设置」里填写 DeepSeek API Key', usage };
+      }
+      if (!usage.allowed) {
+        return { code: 3, msg: `今日 AI 润色次数已用完（${usage.limit} 次/天），明天再试`, usage };
+      }
+
+      const P = CP.engine && CP.engine.pipeline;
+      const images = P && P.extractImages ? P.extractImages(body) : [];
+      const cleanBody = P && P.stripImages ? P.stripImages(body) : body;
+      const origLen = plainLen(cleanBody);
+      if (origLen < 20) return { code: 4, msg: '正文太短，至少 20 字再润色', usage };
+      if (cleanBody.length > 12000) return { code: 4, msg: '正文超过 1.2 万字，请分段润色（单次不超过 1.2 万字）', usage };
+
+      let parsed;
+      try {
+        const content = await aiChat([
+          {
+            role: 'system',
+            content: '你是中文内容润色编辑。只做表达层面的优化：让句子更顺、节奏更好、删掉口水话，保留原文的事实、数字（含单位）、专有名词、结论与段落顺序；不得新增原文没有的数据、案例或观点；不要写成平台标题党。输出合法 JSON：{"title":"润色后的标题","body":"润色后的 markdown 正文","notes":"1-2 句说明润色重点"}。不要输出 JSON 以外的任何文字。'
+          },
+          {
+            role: 'user',
+            content: `【标题】\n${title}\n\n【正文】\n${cleanBody}\n\n请在不改变信息的前提下润色，标题可微调但要保留核心关键词。`
+          }
+        ], { json: true, temperature: 0.5, maxTokens: 8000 });
+        parsed = parseJsonLoose(content);
+      } catch (e) {
+        return { code: 1, msg: e.message || 'AI 润色失败', usage };
+      }
+
+      const newTitle = String(parsed && parsed.title || title || '').trim().slice(0, 100);
+      const newBody = String(parsed && parsed.body || '').trim();
+      if (!newTitle || !newBody) return { code: 4, msg: 'AI 返回内容不完整，请重试（本次不扣次数）', usage };
+
+      const cleanNew = P && P.stripImages ? P.stripImages(newBody) : newBody;
+      const outLen = plainLen(cleanNew);
+      if (outLen < origLen * 0.6 || outLen > origLen * 1.6) {
+        return { code: 4, msg: `AI 润色结果长度异常（${origLen} → ${outLen} 字），已取消替换，本次不扣次数`, usage };
+      }
+
+      const finalBody = P && P.attachImages ? P.attachImages(cleanNew, images, 'article') : cleanNew;
+      const after = CP.actions.consumeAiPolish();
+      return {
+        code: 0,
+        msg: 'AI 润色完成',
+        data: {
+          title: newTitle,
+          body: finalBody,
+          notes: String(parsed.notes || '').trim().slice(0, 200),
+          missingNumbers: missingKeyNumbers(cleanBody, cleanNew),
+          originalLength: origLen,
+          polishedLength: outLen
+        },
+        usage: after
+      };
     },
 
     /* --------------------------------------------------------
@@ -462,16 +579,17 @@ window.CP = window.CP || {};
       // 凭据从系统保险库读取，渲染进程不再持有明文
       const credential = await vault.get(platformId);
       const credOk = !!(acc && acc.linked && credential && acc.credOk !== false);
-      // 仅「已接入真实通道 + 已绑定账号 + 凭据可用」才走自动发布
+      // 仅「已接入真实通道 + 已绑定账号 + 凭据可用 + Electron 通道可用」才走自动发布
       const realReady = REAL_PLATFORM_IDS.includes(platformId);
-      const autoPublish = !!(credOk && realReady);
-      const pendingReal = !!(acc && acc.linked && !credOk && realReady);
+      const electron = window.electronAPI;
+      const autoPublish = !!(credOk && realReady && electron && typeof electron.publishTo === 'function');
+      const pendingReal = !!(acc && acc.linked && realReady && !autoPublish);
       const rec = {
         id: 'h' + Date.now(),
         articleId,
         platformId,
         accountNickname: autoPublish ? (accountNickname || acc.nickname) : '',
-        status: '已发布',
+        status: '复制稿已生成',
         time: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
         link: '',
         views: 0,
@@ -493,8 +611,7 @@ window.CP = window.CP || {};
       };
 
       // 真实发布通道（Electron + 已登录账号）
-      const electron = window.electronAPI;
-      if (autoPublish && electron && typeof electron.publishTo === 'function') {
+      if (autoPublish) {
         try {
           const result = await electron.publishTo({
             platformId,
@@ -524,14 +641,15 @@ window.CP = window.CP || {};
         }
       }
 
-      // 复制稿模式
-      rec.status = autoPublish ? '已发布' : '复制稿已生成';
-      if (!autoPublish) {
-        rec.link = '';
-        rec.copyContent = { title, body }; // 复制稿导出用
-      }
+      // 走到这里说明没有真实发布成功（未登录 / 未接入通道 / 非 Electron 环境）
+      const autoOffReason = !realReady ? 'unsupported'
+        : (!acc || !acc.linked ? 'unlinked'
+          : (!credOk ? 'credential' : 'no-electron'));
+      rec.status = '复制稿已生成';
+      rec.link = '';
+      rec.copyContent = { title, body }; // 复制稿导出用
       commit(rec);
-      return { code: 0, data: { rec, mode: autoPublish ? 'auto' : 'copy', pendingReal, platformName: platform.name } };
+      return { code: 0, data: { rec, mode: 'copy', pendingReal, autoOffReason, platformName: platform.name } };
     },
 
     /* --------------------------------------------------------

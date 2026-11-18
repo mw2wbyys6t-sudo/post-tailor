@@ -51,7 +51,7 @@ window.CP = window.CP || {};
             </div>
             <button class="btn btn-ghost btn-sm" data-act="settings" title="设置">${ui().icon('settings', 15)}</button>
           </div>
-          <div class="sidebar-ver"><span>v1.3.0</span><span>离线优先</span></div>
+          <div class="sidebar-ver"><span>v1.4.0</span><span>离线优先</span></div>
         </aside>
         <div class="main">
           <header class="topbar">
@@ -120,25 +120,33 @@ window.CP = window.CP || {};
   async function openSettings() {
     const s = S().settings;
     const ap = s.autoPull || { enabled: true, interval: 30 };
+    const aiUsage = CP.actions.aiPolishUsage();
+    const secureMode = CP.vault.mode ? CP.vault.mode() : 'keychain';
+    const secureText = secureMode === 'keychain' ? '系统钥匙串加密保存' : '浏览器预览：仅本次会话有效';
     let keyStored = false;
     try { keyStored = !!(await CP.vault.getRaw('ai:key')); } catch (_) { keyStored = false; }
     ui().openModal(`
       <div class="modal-head">
         <h3>设置</h3>
-        <p>AI Key 与平台凭据存入系统钥匙串，明文不落盘；平台账号请在「账号中心」登录。</p>
+        <p>${secureMode === 'keychain' ? 'AI Key 与平台凭据存入系统钥匙串，明文不落盘' : '浏览器预览模式下 AI Key 仅保存在内存，关闭页面即失效'}；平台账号请在「账号中心」登录。</p>
       </div>
       <div class="modal-body">
         <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('bot', 14)} AI 服务（OpenAI 兼容）</div>
-        <label class="label" style="margin-top:8px">Base URL</label>
+        <div class="hint" style="margin-top:6px">已预置 DeepSeek（deepseek-chat）。填入 API Key 即可使用「AI 润色」，每天 20 次。Key ${secureText}。</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+          <label class="label" style="margin:0">Base URL</label>
+          <button class="btn btn-ghost btn-sm" id="set-deepseek" style="margin-left:auto">${ui().icon('zap', 12)} 使用 DeepSeek</button>
+        </div>
         <input class="input" id="set-base" placeholder="https://api.deepseek.com" value="${ui().esc(s.ai.baseUrl)}" />
         <label class="label" style="margin-top:12px">API Key</label>
-        <input class="input" id="set-key" type="password" placeholder="${keyStored ? '已保存（留空则不修改）' : 'sk-...'}" value="" />
+        <input class="input" id="set-key" type="password" placeholder="${keyStored ? (secureMode === 'keychain' ? '已保存（留空则不修改）' : '已保存（仅本次会话）') : 'sk-...'}" value="" />
         <label class="label" style="margin-top:12px">模型名称</label>
         <input class="input" id="set-model" placeholder="deepseek-chat" value="${ui().esc(s.ai.model)}" />
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
           <button class="btn btn-soft btn-sm" id="set-test">${ui().icon('zap', 13)} 测试连接</button>
-          <span class="hint" id="set-test-msg" style="margin-top:0">${keyStored ? 'Key 已加密保存' : '尚未保存 Key'}</span>
+          <span class="hint" id="set-test-msg" style="margin-top:0">${keyStored ? (secureMode === 'keychain' ? 'Key 已加密保存' : 'Key 仅本次会话有效') : '尚未保存 Key'}</span>
         </div>
+        <div class="hint" id="set-ai-usage" style="margin-top:8px">今日 AI 润色（本机账号）：已用 ${aiUsage.used}/${aiUsage.limit} 次，剩余 ${aiUsage.remaining} 次</div>
         <div class="divider"></div>
         <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('clock', 14)} 数据自动回拉</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
@@ -168,6 +176,12 @@ window.CP = window.CP || {};
 
     const modal = document.querySelector('.modal');
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+
+    modal.querySelector('#set-deepseek').addEventListener('click', () => {
+      modal.querySelector('#set-base').value = 'https://api.deepseek.com';
+      modal.querySelector('#set-model').value = 'deepseek-chat';
+      modal.querySelector('#set-test-msg').textContent = '已填入 DeepSeek 推荐配置，填好 Key 后点「测试连接」';
+    });
 
     modal.querySelector('#set-test').addEventListener('click', async () => {
       const btn = modal.querySelector('#set-test');
@@ -220,7 +234,7 @@ window.CP = window.CP || {};
         },
         autoPull: collectAutoPull()
       });
-      ui().toast('配置已保存（AI Key 存入系统钥匙串）', 'ok');
+      ui().toast(secureMode === 'keychain' ? '配置已保存（AI Key 存入系统钥匙串）' : '配置已保存（浏览器预览模式下 Key 仅本次会话有效）', 'ok');
       modal.closest('.modal-wrap').querySelector('[data-close]').click();
       restartAutoPull();
     });
@@ -297,6 +311,16 @@ window.CP = window.CP || {};
   async function runScheduler() {
     const due = S().scheduledPublishes.filter(t => t.status === 'pending' && new Date(t.scheduledAt).getTime() <= Date.now());
     for (const t of due) {
+      // 到点再检查一次平台限制，避免入队后规则变化导致无效发布
+      if (typeof CP.preflightPublish === 'function') {
+        const pre = CP.preflightPublish(t.platformId, { title: t.title, body: t.body });
+        if (pre.blockers.length) {
+          CP.actions.updateScheduled(t.id, { status: 'failed', error: '发布前检查未通过：' + pre.blockers[0] });
+          ui().toast(`定时发布已跳过：「${t.title}」${pre.blockers[0]}`, 'warn');
+          try { window.dispatchEvent(new Event('cp:sched-updated')); } catch (_) { /* ignore */ }
+          continue;
+        }
+      }
       CP.actions.updateScheduled(t.id, { status: 'publishing' });
       let res;
       try {
@@ -329,6 +353,9 @@ window.CP = window.CP || {};
     CP.updateSniffBadge();
     restartAutoPull();
   };
+
+  /* 编辑器等页面可直接打开设置（AI Key / 额度） */
+  CP.openSettings = openSettings;
 
   /* ---------- 启动时处理错过的定时任务（应用未运行不会执行） ---------- */
   function markMissedSchedules() {

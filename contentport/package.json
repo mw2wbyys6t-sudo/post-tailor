@@ -1,7 +1,7 @@
 {
   "name": "omnidraft",
   "productName": "OmniDraft",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "一稿千面：把一篇文章改写成各平台原生版本，分发并回拉数据",
   "main": "electron/main.js",
   "author": "OmniDraft",
