@@ -37,6 +37,16 @@ OmniDraft 的答案是：**内容分析 → 平台规划 → 分平台成稿 →
 
 ---
 
+## 品牌
+
+标志是**一条纸带反复对折**：仍是最初那张纸，却折出多个面 —— 一稿千面。受光面与背光面交替，对应同一内容在不同平台上的形态；琥珀色折边表示"还要继续折下去"。
+
+- 矢量：[icon.svg](contentport/assets/logo/icon.svg) · [lockup.svg](contentport/assets/logo/lockup.svg) · [mark-mono.svg](contentport/assets/logo/mark-mono.svg) / [mark-mono-light.svg](contentport/assets/logo/mark-mono-light.svg)
+- 位图：`icon-1024 / 512 / 256 / 64 / 32.png` · `lockup.png` · `mark-mono(-light)-512.png`
+- 对照预览：[assets/logo/preview.html](contentport/assets/logo/preview.html)；早期方向存档在 `assets/logo/concepts/`
+
+---
+
 ## 平台支持矩阵
 
 | 平台 | 登录方式 | 发布通道 | 自动发布 | 数据回拉 |

@@ -1,33 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 400" width="1360" height="400" role="img" aria-label="一稿千面 OmniDraft 横版标志">
-  <title>OmniDraft · 一稿千面 横版组合</title>
-  <defs>
-    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#12857B" />
-      <stop offset="0.55" stop-color="#0F766E" />
-      <stop offset="1" stop-color="#0A544E" />
-    </linearGradient>
-    <linearGradient id="paper2" x1="0" y1="0" x2="0.4" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" />
-      <stop offset="1" stop-color="#F4FBF9" />
-    </linearGradient>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 400" width="1360" height="400" role="img" aria-label="OmniDraft 一稿千面 横版标志">
+  <title>OmniDraft · 一稿千面</title>
 
-  <!-- 标记 -->
-  <g transform="translate(64 56) scale(0.28125)">
-    <rect width="1024" height="1024" rx="224" fill="url(#bg2)" />
-    <rect x="252" y="210" width="400" height="500" rx="46" fill="#FFFFFF" opacity="0.15" />
-    <rect x="312" y="262" width="400" height="500" rx="46" fill="#FFFFFF" opacity="0.3" />
-    <rect x="372" y="314" width="400" height="500" rx="46" fill="url(#paper2)" />
-    <rect x="412" y="404" width="136" height="20" rx="10" fill="#C27803" opacity="0.92" />
-    <rect x="412" y="456" width="300" height="15" rx="7.5" fill="#0F766E" opacity="0.26" />
-    <rect x="412" y="504" width="250" height="15" rx="7.5" fill="#0F766E" opacity="0.26" />
-    <rect x="412" y="552" width="282" height="15" rx="7.5" fill="#0F766E" opacity="0.22" />
-    <rect x="412" y="600" width="210" height="15" rx="7.5" fill="#0F766E" opacity="0.18" />
-    <rect x="412" y="648" width="158" height="15" rx="7.5" fill="#0F766E" opacity="0.12" />
-    <path d="M700 348 Q708.8 383.2 744 392 Q708.8 400.8 700 436 Q691.2 400.8 656 392 Q691.2 383.2 700 348 Z" fill="#E8A33D" />
+  <!-- 标记：折页，按 0.28 缩放嵌入 -->
+  <g transform="translate(64 56) scale(0.28)">
+    <path d="M128 0 H896 L1024 128 V896 L896 1024 H128 L0 896 V128 Z" fill="#16211F" />
+    <path d="M212 392 L410 302 L410 594 L212 684 Z" fill="#F5F2EB" />
+    <path d="M410 302 L608 392 L608 684 L410 594 Z" fill="#BFD4CD" />
+    <path d="M608 392 L806 302 L806 594 L608 684 Z" fill="#F5F2EB" />
+    <path d="M806 302 L806 594" stroke="#E8A33D" stroke-width="20" stroke-linecap="round" />
   </g>
 
-  <!-- 文字 -->
   <g font-family="'Noto Serif SC','Source Han Serif SC','Songti SC',Georgia,serif">
     <text x="392" y="206" font-size="104" font-weight="700" fill="#23262E" letter-spacing="1">OmniDraft</text>
     <text x="396" y="268" font-size="34" fill="#555A66" letter-spacing="6" font-family="'PingFang SC','Microsoft YaHei',sans-serif">一 稿 千 面</text>

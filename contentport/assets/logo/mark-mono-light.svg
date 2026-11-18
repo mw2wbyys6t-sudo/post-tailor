@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="OmniDraft 单色标志（深色底）">
+  <title>OmniDraft · 单色标志（深色底）</title>
+  <!-- 深色底使用：折面用纸白，背光面降低不透明度 -->
+  <g fill="#F5F2EB">
+    <path d="M212 392 L410 302 L410 594 L212 684 Z" />
+    <path d="M410 302 L608 392 L608 684 L410 594 Z" opacity="0.42" />
+    <path d="M608 392 L806 302 L806 594 L608 684 Z" />
+  </g>
+</svg>

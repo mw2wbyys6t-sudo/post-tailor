@@ -1,17 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="OmniDraft 单色标志">
-  <title>OmniDraft · 单色标志</title>
-  <!-- 用于深色背景或需要单色的场景：三层稿纸用描边表达「一稿多面」 -->
-  <g fill="none" stroke="#FFFFFF" stroke-linejoin="round">
-    <rect x="252" y="210" width="400" height="500" rx="46" stroke-width="30" opacity="0.34" />
-    <rect x="312" y="262" width="400" height="500" rx="46" stroke-width="30" opacity="0.6" />
-    <rect x="372" y="314" width="400" height="500" rx="46" stroke-width="34" />
+  <title>OmniDraft · 单色标志（浅色底）</title>
+  <!-- 单色版：去掉底板与琥珀折边，只保留折页本体；用明度差表达折面 -->
+  <g fill="#16211F">
+    <path d="M212 392 L410 302 L410 594 L212 684 Z" />
+    <path d="M410 302 L608 392 L608 684 L410 594 Z" opacity="0.42" />
+    <path d="M608 392 L806 302 L806 594 L608 684 Z" />
   </g>
-  <g fill="#FFFFFF">
-    <rect x="412" y="402" width="128" height="22" rx="11" />
-    <rect x="412" y="456" width="300" height="16" rx="8" opacity="0.62" />
-    <rect x="412" y="504" width="248" height="16" rx="8" opacity="0.62" />
-    <rect x="412" y="552" width="284" height="16" rx="8" opacity="0.38" />
-  </g>
-  <path d="M700 348 Q708.8 383.2 744 392 Q708.8 400.8 700 436 Q691.2 400.8 656 392 Q691.2 383.2 700 348 Z"
-        fill="#FFFFFF" />
 </svg>
