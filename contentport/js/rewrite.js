@@ -224,20 +224,5 @@ ${closing}`;
     };
   }
 
-  /* 文章关键字（用于小红书标签等）——惰性补充 */
-  function ensureKeywords() {
-    CP.mock.ARTICLES.forEach(a => {
-      if (!a.keyword) {
-        const map = {
-          'a1': 'RAG知识库', 'a2': '监控体系', 'a3': '前端趋势', 'a4': '知识管理',
-          'a5': '职场避坑', 'a6': '学习方法', 'a7': '数据库优化', 'a8': '独立开发',
-          'a9': 'AI编程助手', 'a10': 'API科普'
-        };
-        a.keyword = map[a.id] || a.category;
-      }
-    });
-  }
-  ensureKeywords();
-
   CP.genRewrite = genRewrite;
 })();
