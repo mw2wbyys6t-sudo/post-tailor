@@ -168,7 +168,7 @@ window.CP = window.CP || {};
       desc: '填写公众号的 AppID 与 AppSecret，即可发布到公众号草稿箱。',
       guide: '<div class="hint" style="margin-bottom:12px">在 <a href="https://mp.weixin.qq.com/" target="_blank" style="color:var(--primary);font-weight:600">微信公众平台</a> → 设置与开发 → 基本配置 中获取；AppSecret 仅显示一次，请先复制。</div>',
       fields: [
-        { key: 'appid', label: 'AppID', ph: '例如 wx1234567890abcdef', type: 'text' },
+        { key: 'appid', label: 'AppID', ph: '公众号后台「基本配置」中的 AppID', type: 'text' },
         { key: 'secret', label: 'AppSecret', ph: '公众号后台的基本配置中复制', type: 'password' }
       ],
       hint: '未认证的订阅号可能无法使用发布接口；本机 IP 需加入公众号 IP 白名单。'
