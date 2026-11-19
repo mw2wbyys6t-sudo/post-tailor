@@ -1,7 +1,7 @@
 {
   "name": "omnidraft",
   "productName": "OmniDraft",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "一稿千面：把一篇文章改写成各平台原生版本，分发并回拉数据",
   "main": "electron/main.js",
   "author": "OmniDraft",
@@ -43,17 +43,37 @@
     ],
     "win": {
       "target": [
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "OmniDraft-Win-x64-${version}.zip",
       "signAndEditExecutable": false
     },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "category": "public.app-category.productivity"
     },
     "linux": {
-      "target": [{ "target": "zip", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "artifactName": "OmniDraft-Linux-x64-${version}.zip",
       "category": "Office"
     }
