@@ -21,6 +21,30 @@ OmniDraft 是一个本地优先的桌面应用（Electron）。它把"一篇文�
 
 ---
 
+## 演示
+
+以下为应用界面的真实操作录屏（使用内置演示数据，未连接任何平台账号）。
+
+**① 工作台与文章库：内容资产与发布进度一目了然**
+
+<p align="center">
+  <img src="contentport/docs/demo/01-overview.gif" alt="工作台与文章库演示" width="720">
+</p>
+
+**② 双模式编辑器：富文本 / Markdown 随写随切，支持双栏预览**
+
+<p align="center">
+  <img src="contentport/docs/demo/02-editor.gif" alt="双模式编辑器演示" width="720">
+</p>
+
+**③ 智能改写：一次生成四个平台的原生版本，并给出七维质检分**
+
+<p align="center">
+  <img src="contentport/docs/demo/03-rewrite.gif" alt="多平台智能改写与质检演示" width="720">
+</p>
+
+---
+
 ## 为什么需要它
 
 同一篇内容直接复制到四个平台，通常会在三处失效：
