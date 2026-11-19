@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mw2wbyys6t-sudo/post-tailor/releases/latest"><img src="https://img.shields.io/github/v/release/mw2wbyys6t-sudo/post-tailor?color=16211F&label=release" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/mw2wbyys6t-sudo/post-tailor?color=BFD4CD" alt="License"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-16211F" alt="Platform">
-  <img src="https://img.shields.io/badge/Electron-33-16211F" alt="Electron 33">
+  <a href="https://github.com/mw2wbyys6t-sudo/post-tailor/releases/latest"><img src="https://img.shields.io/github/v/release/mw2wbyys6t-sudo/post-tailor?color=E8A33D&label=release" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mw2wbyys6t-sudo/post-tailor?color=4F8A7B" alt="License"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-3B7EA1" alt="Platform">
+  <img src="https://img.shields.io/badge/Electron-33-47848F" alt="Electron 33">
 </p>
 
 OmniDraft 是一个本地优先的桌面应用（Electron）。它把"一篇文章复制到四个平台"这件事拆成三步：**先理解文章，再按平台重写，最后发布并看数据**。
@@ -52,10 +52,6 @@ OmniDraft 的答案是：**内容分析 → 平台规划 → 分平台成稿 →
 ---
 
 ## 品牌
-
-<p align="center">
-  <img src="contentport/assets/logo/lockup.png" alt="OmniDraft 一稿千面 横版标志" width="560">
-</p>
 
 标志是**一条纸带反复对折**：仍是最初那张纸，却折出多个面 —— 一稿千面。受光面与背光面交替，对应同一内容在不同平台上的形态；琥珀色折边表示"还要继续折下去"。
 
