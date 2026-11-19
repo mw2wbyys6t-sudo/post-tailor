@@ -41,8 +41,8 @@ window.CP = window.CP || {};
 
   const state = {
     portrait: load(LS.portrait, null),            // 用户画像（问答结果）
-    articles: load(LS.articles, null),            // 文章库（含用户新增）
-    history: load(LS.history, null),              // 发布记录
+    articles: load(LS.articles, []),              // 文章库（仅用户自己的内容）
+    history: load(LS.history, []),                // 发布记录
     settings: load(LS.settings, {
       ai: { baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat' },
       autoPull: { enabled: true, interval: 30 }
@@ -70,14 +70,33 @@ window.CP = window.CP || {};
   if (!state.settings.ai.model) { state.settings.ai.model = 'deepseek-chat'; aiDefaultsChanged = true; }
   if (aiDefaultsChanged) save(LS.settings, state.settings);
 
-  /* ---------- 首次启动：内置样例数据，显式标记为演示 ---------- */
-  if (!state.articles) {
-    state.articles = CP.mock.ARTICLES.map(a => ({ ...a, demo: true }));
+  /* ---------- 首次启动：空白库 ----------
+     不预置任何文章、发布记录或统计数据；老版本遗留的演示数据在此清理。 */
+  if (!Array.isArray(state.articles)) state.articles = [];
+  if (!Array.isArray(state.history)) state.history = [];
+  purgeLegacyDemoData();
+
+  function purgeLegacyDemoData() {
+    const demoIds = new Set(state.articles.filter(a => a.demo).map(a => a.id));
+    const demoHistory = state.history.filter(h => h.demo);
+    if (!demoIds.size && !demoHistory.length) return;
+
+    state.articles = state.articles.filter(a => !a.demo);
+    state.history = state.history.filter(h => !h.demo);
     save(LS.articles, state.articles);
-  }
-  if (!state.history) {
-    state.history = CP.mock.HISTORY.map(h => ({ ...h, demo: true }));
     save(LS.history, state.history);
+
+    // 演示文章的改写稿、草稿与待发布任务一并清理，避免留下无主数据
+    let rewritesChanged = false;
+    demoIds.forEach(id => {
+      if (state.rewrites && state.rewrites[id]) { delete state.rewrites[id]; rewritesChanged = true; }
+      if (state.drafts && state.drafts[id]) delete state.drafts[id];
+    });
+    if (rewritesChanged) save(LS.rewrites, state.rewrites);
+    save(LS.drafts, state.drafts);
+    const before = state.scheduledPublishes.length;
+    state.scheduledPublishes = state.scheduledPublishes.filter(t => !demoIds.has(t.articleId));
+    if (state.scheduledPublishes.length !== before) save(LS.scheduled, state.scheduledPublishes);
   }
 
   /* 本地日期键：额度按用户所在时区的自然日重置 */
@@ -127,7 +146,6 @@ window.CP = window.CP || {};
       if (!a) return false;
       const prev = { ...a };
       Object.assign(a, patch);
-      if (patch.title || patch.body) delete a.demo; // 用户已编辑，不再是演示数据
       const ok = save(LS.articles, state.articles);
       if (!ok) Object.assign(a, prev);
       return ok;
@@ -300,31 +318,6 @@ window.CP = window.CP || {};
     clearAllDrafts() {
       state.drafts = {};
       save(LS.drafts, state.drafts);
-    },
-    /* ---------- 演示数据 ---------- */
-    hasDemoData() {
-      return state.articles.some(a => a.demo) || state.history.some(h => h.demo);
-    },
-    clearDemoData() {
-      const removed = new Set(state.articles.filter(a => a.demo).map(a => a.id));
-      state.articles = state.articles.filter(a => !a.demo);
-      state.history = state.history.filter(h => !h.demo);
-      save(LS.articles, state.articles);
-      save(LS.history, state.history);
-
-      // 演示文章的改写稿、草稿与待发布任务一并清理，避免留下无主数据
-      let rewritesChanged = false;
-      removed.forEach(id => {
-        if (state.rewrites && state.rewrites[id]) { delete state.rewrites[id]; rewritesChanged = true; }
-        if (state.drafts && state.drafts[id]) { delete state.drafts[id]; save(LS.drafts, state.drafts); }
-      });
-      if (rewritesChanged) save(LS.rewrites, state.rewrites);
-      const schedBefore = state.scheduledPublishes.length;
-      state.scheduledPublishes = state.scheduledPublishes.filter(t => !removed.has(t.articleId));
-      if (state.scheduledPublishes.length !== schedBefore) save(LS.scheduled, state.scheduledPublishes);
-
-      state.ui.rewriteResults = {};
-      state.ui.activeArticleId = null;
     },
     /* ---------- 全量备份 / 恢复（不含 AI Key 与平台凭据） ---------- */
     exportAll() {

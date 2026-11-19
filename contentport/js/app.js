@@ -196,7 +196,6 @@ window.CP = window.CP || {};
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" id="set-clear-drafts">${ui().icon('trash', 13)} 清理编辑器草稿</button>
-          ${CP.actions.hasDemoData() ? `<button class="btn btn-ghost btn-sm" id="set-clear-demo">${ui().icon('trash', 13)} 清理演示数据</button>` : ''}
         </div>
       </div>
       <div class="modal-foot">
@@ -318,26 +317,6 @@ window.CP = window.CP || {};
       refreshStorageHint();
       ui().toast('已清理编辑器草稿', 'ok');
     });
-
-    const clearDemoBtn = modal.querySelector('#set-clear-demo');
-    if (clearDemoBtn) {
-      clearDemoBtn.addEventListener('click', async () => {
-        const ok = await ui().confirm({
-          title: '清理演示数据',
-          message: '将删除内置的演示文章与发布记录，你自己创建的内容不受影响。确定继续？',
-          confirmText: '清理',
-          danger: true,
-          stack: true
-        });
-        if (!ok) return;
-        CP.actions.clearDemoData();
-        refreshStorageHint();
-        clearDemoBtn.remove();
-        renderShell();
-        render();
-        ui().toast('已清理演示数据', 'ok');
-      });
-    }
 
     function collectAutoPull() {
       return {

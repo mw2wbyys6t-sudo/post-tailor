@@ -49,15 +49,6 @@ window.CP = window.CP || {};
         </div>
       </div>
 
-      ${CP.actions.hasDemoData() ? `
-      <div class="card fade-up" style="margin-bottom:16px;border-color:var(--amber);background:var(--amber-soft)">
-        <div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <span style="display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--amber)">${ui().icon('alert', 15)} 当前包含内置演示数据</span>
-          <span class="hint" style="margin:0;flex:1;min-width:220px">演示文章与发布记录仅用于快速体验，不代表真实发布结果。你可以一键清空后导入自己的文章。</span>
-          <button class="btn btn-ghost btn-sm" data-act="clear-demo">${ui().icon('trash', 13)} 清空演示数据</button>
-        </div>
-      </div>` : ''}
-
       ${(() => { const n = nextStep(); return `
       <div class="card fade-up" style="margin-bottom:16px;border-color:var(--primary);background:var(--primary-soft)">
         <div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -212,11 +203,6 @@ window.CP = window.CP || {};
     bindAll(root, '[data-act="go-library"]', () => location.hash = '#/library');
     bindAll(root, '[data-act="go-history"]', () => location.hash = '#/history');
     bindAll(root, '[data-act="go-accounts"]', () => location.hash = '#/accounts');
-    bindAll(root, '[data-act="clear-demo"]', () => {
-      CP.actions.clearDemoData();
-      ui().toast('已清空演示数据，现在可以导入自己的文章', 'ok');
-      CP.refreshPage();
-    });
     root.querySelectorAll('[data-step]').forEach(el => {
       el.addEventListener('click', () => {
         const k = el.dataset.step;
@@ -237,20 +223,18 @@ window.CP = window.CP || {};
   /* 按当前状态只推荐一个下一步动作，避免新用户停在总览页不知所措 */
   function nextStep() {
     const portrait = S().portrait;
-    const demo = CP.actions.hasDemoData();
-    const ownArticles = S().articles.filter(a => !a.demo);
+    const articles = S().articles;
     const rewriteCount = Object.keys((CP.state && CP.state.rewrites) || {}).length;
     const accounts = S().settings.accounts || {};
     const linked = Object.keys(accounts).filter(k => accounts[k] && accounts[k].linked);
-    const ownHistory = S().history.filter(h => !h.demo);
+    const history = S().history;
 
     if (!portrait) return { t: '先建立用户画像', d: '让改写更贴合你的定位与目标读者', btn: '去建立画像', href: '#/profile' };
-    if (demo && !ownArticles.length) return { t: '清空演示数据，换成你自己的文章', d: '演示内容只用于体验，不会真实发布', btn: '去文章库', href: '#/library' };
-    if (!ownArticles.length) return { t: '写第一篇文章', d: '支持 Markdown 与富文本，写完就能一键改写', btn: '去写第一篇', href: '#/library' };
+    if (!articles.length) return { t: '写第一篇文章', d: '支持 Markdown 与富文本，写完就能一键改写', btn: '去写第一篇', href: '#/library' };
     if (!rewriteCount) return { t: '把文章改写成平台版本', d: '同一篇稿子，为 4 个平台各写一版并质检', btn: '去分发', href: '#/distribute' };
     if (!linked.length) return { t: '登录一个平台账号', d: '登录后可直接发布；不登录也能生成复制稿手动贴', btn: '去登录', href: '#/accounts' };
-    if (!ownHistory.length) return { t: '发布第一篇改写稿', d: '发布前会自动检查平台限制，避免白发', btn: '去发布', href: '#/distribute' };
-    if (!ownHistory.some(h => h.lastSync)) return { t: '回拉一次真实数据', d: '拿到阅读与点赞，才能判断哪个版本更好', btn: '去回拉', href: '#/history' };
+    if (!history.length) return { t: '发布第一篇改写稿', d: '发布前会自动检查平台限制，避免白发', btn: '去发布', href: '#/distribute' };
+    if (!history.some(h => h.lastSync)) return { t: '回拉一次真实数据', d: '拿到阅读与点赞，才能判断哪个版本更好', btn: '去回拉', href: '#/history' };
     return { t: '继续写下一篇', d: '当前已跑通：改写 → 发布 → 回拉', btn: '去写作', href: '#/library' };
   }
 

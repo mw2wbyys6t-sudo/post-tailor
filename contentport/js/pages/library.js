@@ -105,10 +105,11 @@ window.CP = window.CP || {};
     CP.api.fetchArticles(filter).then(res => {
       const list = res.data;
       if (!list.length) {
+        const hasAny = S().articles.length > 0;
         wrap.innerHTML = `<div class="card empty">
           <div class="empty-ic">${ui().icon('book', 26)}</div>
-          <h4>没有匹配的文章</h4>
-          <p>换个关键词，或新建一篇新文章。</p>
+          <h4>${hasAny ? '没有匹配的文章' : '还没有文章'}</h4>
+          <p>${hasAny ? '换个关键词，或新建一篇新文章。' : '点击右上角「新建 / 导入文章」，写下你的第一篇内容。'}</p>
         </div>`;
         return;
       }
