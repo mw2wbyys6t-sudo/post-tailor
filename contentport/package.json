@@ -18,6 +18,7 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
+    "test": "node --test",
     "eval": "node eval/run.js",
     "eval:ai": "node eval/run.js --ai",
     "eval:baseline": "node eval/run.js --engine=both --save-baseline",

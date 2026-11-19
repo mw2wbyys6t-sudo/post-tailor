@@ -232,6 +232,7 @@ contentport/
 
 ```bash
 cd contentport
+npm test                # 冒烟测试：改写流水线 / Markdown 转义 / 演示数据清理
 npm run eval            # 新旧引擎对比 + 阈值检查（不达标退出码 1）
 npm run eval:ai         # 真实模型评测（需 AI_API_KEY / DEEPSEEK_API_KEY / AI_BASE_URL / AI_MODEL）
 node eval/run.js --ai --cases=case-rag,case-short --platforms=csdn   # 小样本真实模型冒烟
