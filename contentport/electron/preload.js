@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loginTo: (payload) => ipcRenderer.invoke('platform:login', payload),
   // 扫码登录（打开平台登录页，捕获 Cookie）
   loginOAuth: (payload) => ipcRenderer.invoke('platform:login-oauth', payload),
+  // 取消扫码登录（关闭登录窗口）
+  cancelLogin: (payload) => ipcRenderer.invoke('platform:login-cancel', payload),
   // 平台自动发布（真实 API）
   publishTo: (payload) => ipcRenderer.invoke('platform:publish', payload),
   // 平台数据回拉（阅读/点赞/评论）

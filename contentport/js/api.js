@@ -553,10 +553,19 @@ window.CP = window.CP || {};
           const info = await electron.loginOAuth({ platformId });
           return { code: 0, data: { cookie: info.cookie, nickname: info.nickname, method: info.method || 'oauth' } };
         } catch (e) {
-          return { code: 1, msg: e.message || '扫码登录失败' };
+          return { code: 1, msg: e.message || '扫码登录失败', errorCode: e.code || '' };
         }
       }
       return { code: 1, msg: '扫码登录仅支持 Electron 桌面版' };
+    },
+
+    /* 取消进行中的扫码登录（关闭登录窗口） */
+    async cancelOAuth(platformId) {
+      const electron = window.electronAPI;
+      if (electron && typeof electron.cancelLogin === 'function') {
+        try { return await electron.cancelLogin({ platformId }); } catch (_) { return { ok: false }; }
+      }
+      return { ok: false };
     },
 
     /* --------------------------------------------------------

@@ -188,35 +188,84 @@ window.CP = window.CP || {};
     if (!electron || typeof electron.loginOAuth !== 'function') {
       return showDesktopLoginGuide(pid);
     }
+    const scanApp = pid === 'zhihu' ? '知乎 App' : '小红书 App';
 
     ui().openModal(`
       <div class="modal-head">
         <h3>登录 ${p.name}</h3>
-        <p>已打开 ${p.name} 官方登录窗口，扫码或登录后自动完成。</p>
+        <p>用${scanApp}扫码，登录成功后自动返回，不需要复制 Cookie。</p>
       </div>
       <div class="modal-body">
-        <div style="display:flex;align-items:center;gap:14px;padding:16px;background:var(--surface-2);border-radius:10px">
-          <div class="acc-spin"></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:16px;background:var(--primary-soft);border:1px solid rgba(15,118,110,.18);border-radius:12px">
+          <div style="width:44px;height:44px;border-radius:12px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;flex:none">${ui().icon('scan', 24)}</div>
           <div>
-            <div style="font-weight:700;font-size:13.5px" id="oauth-title">等待登录…</div>
-            <div class="hint" id="oauth-msg" style="margin-top:4px">在弹出的窗口里用手机扫码，登录成功后会自动返回并保存。</div>
+            <div style="font-weight:700;font-size:14px">登录窗口已打开</div>
+            <div class="hint" style="margin-top:3px">在弹窗中切换到「扫码登录」，用手机${scanApp}扫描二维码。</div>
           </div>
         </div>
-        <div class="hint" style="margin-top:12px">无需复制 Cookie，也不用重新打开页面。若窗口没有出现，请检查是否被浏览器拦截。</div>
+        <div class="oauth-steps" id="oauth-steps">
+          <div class="oauth-step done"><b>1</b><span>打开登录页</span></div>
+          <div class="oauth-step active"><b>2</b><span>手机扫码并确认</span></div>
+          <div class="oauth-step"><b>3</b><span>自动完成登录</span></div>
+        </div>
+        <div class="oauth-status" id="oauth-status">
+          <div class="acc-spin"></div>
+          <div>
+            <div style="font-weight:700;font-size:13.5px" id="oauth-title">等待扫码…</div>
+            <div class="hint" id="oauth-msg" style="margin-top:3px">扫码后在手机上点「确认登录」，这里会自动完成。</div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:10px">若窗口被关掉，点「重新打开窗口」即可继续；页面显示密码登录时，点右上角「扫码登录」切换。</div>
       </div>
       <div class="modal-foot">
-        <button class="btn btn-ghost" data-mclose>关闭</button>
-      </div>`, { width: 480 });
+        <button class="btn btn-soft" id="oauth-reopen">${ui().icon('refresh', 15)} 重新打开窗口</button>
+        <button class="btn btn-ghost" data-mclose>取消登录</button>
+      </div>`, { width: 540 });
 
     const modal = document.querySelector('.modal');
-    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+    const closeModal = () => {
+      const close = modal.querySelector('[data-close]');
+      if (close) close.click();
+    };
+    let aborted = false;
+
+    modal.querySelector('[data-mclose]').addEventListener('click', async () => {
+      aborted = true;
+      await CP.api.cancelOAuth(pid);
+      closeModal();
+    });
+
+    modal.querySelector('#oauth-reopen').addEventListener('click', async () => {
+      const btn = modal.querySelector('#oauth-reopen');
+      btn.disabled = true;
+      btn.innerHTML = ui().icon('refresh', 15) + ' 正在打开…';
+      aborted = true;
+      await CP.api.cancelOAuth(pid);
+      closeModal();
+      startOAuthLogin(pid, root);
+    });
 
     const res = await CP.api.loginOAuth(pid);
+    if (aborted) return;
+
     const titleEl = document.getElementById('oauth-title');
     const msgEl = document.getElementById('oauth-msg');
 
     if (res.code === 0) {
       const nickname = res.data.nickname || p.name;
+      const steps = document.querySelectorAll('#oauth-steps .oauth-step');
+      if (steps[1]) steps[1].classList.replace('active', 'done');
+      if (steps[2]) steps[2].classList.add('done');
+      const statusEl = document.getElementById('oauth-status');
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--ok-soft);color:var(--ok);display:flex;align-items:center;justify-content:center;flex:none">${ui().icon('checkCircle', 20)}</div>
+          <div>
+            <div style="font-weight:700;font-size:13.5px">登录成功</div>
+            <div class="hint" style="margin-top:3px">已登录 ${ui().esc(nickname)}，正在返回账号中心…</div>
+          </div>`;
+      }
+
       const stored = await storeCredential(pid, { cookie: res.data.cookie });
       const ready = credentialReady(stored);
       const accounts = getAccounts();
@@ -230,12 +279,18 @@ window.CP = window.CP || {};
       saveAccounts(accounts);
       ui().toast(`已登录 ${p.name}：${nickname}`, 'ok');
       if (!ready) ui().toast('系统安全存储不可用，凭据仅本次运行有效', 'warn');
-      const close = modal.querySelector('[data-close]');
-      if (close) close.click();
-      renderCardAll(root);
+      setTimeout(() => { closeModal(); renderCardAll(root); }, 600);
     } else {
       if (titleEl) titleEl.textContent = '登录未完成';
-      if (msgEl) msgEl.textContent = res.msg || '登录失败，请重试';
+      if (msgEl) msgEl.textContent = `${res.msg || '登录失败，请重试'}。可点「重新打开窗口」再试一次。`;
+      const steps = document.querySelectorAll('#oauth-steps .oauth-step');
+      if (steps[1]) steps[1].classList.remove('active');
+      const statusEl = document.getElementById('oauth-status');
+      if (statusEl) {
+        statusEl.style.background = 'var(--danger-soft)';
+        const spin = statusEl.querySelector('.acc-spin');
+        if (spin) spin.remove();
+      }
     }
   }
 

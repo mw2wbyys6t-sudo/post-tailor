@@ -14,6 +14,8 @@ try {
   app.setPath('userData', path.join(app.getPath('appData'), 'ContentPort'));
 } catch (_) { /* 路径不可写时使用默认目录 */ }
 
+let mainWindow = null;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -33,6 +35,8 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, '..', 'index.html'));
+  mainWindow = win;
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
 
   // 外部链接用系统浏览器打开
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -168,16 +172,31 @@ const OAUTH_CONF = {
   }
 };
 
+/* 进行中的扫码登录会话：同一平台重复点击只聚焦窗口，不重复开窗 */
+const loginSessions = new Map();
+
 async function openLoginWindow(platformId) {
   const conf = OAUTH_CONF[platformId];
   if (!conf) throw new Error(`平台 ${platformId} 不支持扫码登录`);
 
+  const existing = loginSessions.get(platformId);
+  if (existing) {
+    if (existing.win && !existing.win.isDestroyed()) {
+      if (existing.win.isMinimized()) existing.win.restore();
+      existing.win.focus();
+    }
+    return existing.promise;
+  }
+
   const ses = session.fromPartition('persist:platform-' + platformId);
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const win = new BrowserWindow({
-    width: 440,
-    height: 680,
+    width: 460,
+    height: 700,
     title: conf.title,
+    show: false,
     autoHideMenuBar: true,
+    parent,
     webPreferences: {
       session: ses,
       contextIsolation: true,
@@ -186,34 +205,99 @@ async function openLoginWindow(platformId) {
     }
   });
   win.setMenuBarVisibility(false);
-  await win.loadURL(conf.url);
+  win.center();
 
-  // 轮询 Cookie：出现关键登录态字段即视为登录完成
-  const cookieStr = await new Promise((resolve) => {
-    let tries = 0;
-    const timer = setInterval(async () => {
-      tries++;
-      if (tries >= 300) { clearInterval(timer); resolve(null); return; } // 最多等 10 分钟
-      try {
-        const list = await ses.cookies.get({});
-        const has = conf.readyCookies.every(name => list.some(c => c.name === name));
-        if (has) {
-          clearInterval(timer);
-          resolve(list.map(c => `${c.name}=${c.value}`).join('; '));
-        }
-      } catch (_) { /* 忽略轮询错误 */ }
-    }, 2000);
+  let settled = false;
+  let timer = null;
+  let resolvePromise;
+  let rejectPromise;
+  const promise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
   });
-  win.destroy();
-  if (!cookieStr) throw new Error('登录超时，请重试');
 
-  const verifier = platformId === 'zhihu' ? zhihu.verifyLogin : xhs.verifyLogin;
-  const info = await verifier(cookieStr);
-  return { cookie: cookieStr, ...info };
+  const settle = (fn, value) => {
+    if (settled) return;
+    settled = true;
+    if (timer) clearInterval(timer);
+    loginSessions.delete(platformId);
+    if (win && !win.isDestroyed()) win.destroy();
+    fn(value);
+  };
+
+  loginSessions.set(platformId, {
+    win,
+    promise,
+    cancel() {
+      const err = new Error('已取消登录');
+      err.code = 'CANCELED';
+      settle(rejectPromise, err);
+    }
+  });
+
+  win.on('closed', () => {
+    const err = new Error('登录窗口已关闭，请重新扫码');
+    err.code = 'CLOSED';
+    settle(rejectPromise, err);
+  });
+
+  try {
+    await win.loadURL(conf.url);
+  } catch (e) {
+    settle(rejectPromise, new Error('登录页加载失败，请检查网络后重试'));
+    return promise;
+  }
+  if (win.isDestroyed()) {
+    const err = new Error('登录窗口已关闭，请重新扫码');
+    err.code = 'CLOSED';
+    settle(rejectPromise, err);
+    return promise;
+  }
+  win.show();
+  win.focus();
+
+  // 每秒检查一次登录态，出现关键 Cookie 即视为完成
+  let tries = 0;
+  timer = setInterval(async () => {
+    if (settled) return;
+    tries++;
+    if (tries > 300) { // 最多等 5 分钟
+      const err = new Error('登录超时，请重新扫码');
+      err.code = 'TIMEOUT';
+      settle(rejectPromise, err);
+      return;
+    }
+    try {
+      const list = await ses.cookies.get({});
+      const ready = conf.readyCookies.every(name => list.some(c => c.name === name));
+      if (!ready || settled) return;
+      const cookieStr = list.map(c => `${c.name}=${c.value}`).join('; ');
+      const verifier = platformId === 'zhihu' ? zhihu.verifyLogin : xhs.verifyLogin;
+      try {
+        const info = await verifier(cookieStr);
+        settle(resolvePromise, { cookie: cookieStr, ...info });
+      } catch (e) {
+        settle(rejectPromise, e);
+      }
+    } catch (_) { /* 忽略轮询错误 */ }
+  }, 1000);
+
+  return promise;
 }
 
 ipcMain.handle('platform:login-oauth', async (_event, { platformId }) => {
   return await openLoginWindow(platformId);
+});
+
+/* 取消进行中的扫码登录（关闭登录窗口并结束等待） */
+ipcMain.handle('platform:login-cancel', async (_event, { platformId } = {}) => {
+  const ids = platformId ? [platformId] : [...loginSessions.keys()];
+  let canceled = 0;
+  ids.forEach((id) => {
+    const s = loginSessions.get(id);
+    if (s) { s.cancel(); canceled++; }
+  });
+  return { ok: canceled > 0 };
 });
 
 /* ---------- 小红书浏览器全自动发布 ----------
