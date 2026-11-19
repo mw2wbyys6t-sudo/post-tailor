@@ -1,8 +1,9 @@
 /* =========================================================
    OmniDraft · 账号中心（accounts.js）
    登录 / 绑定 / 解绑平台账号
-   登录方式：① 开放平台 API 凭据（AppID/AppSecret/Token）
-            ② 浏览器 Cookie（Electron 内打开平台登录页扫码捕获）
+   登录方式：知乎 / 小红书 → 一键打开官方登录页（扫码后自动保存）
+            CSDN / 微信公众号 → 账号密码 / AppID + AppSecret
+            不登录也可以直接用「复制稿」模式
    ========================================================= */
 window.CP = window.CP || {};
 
@@ -30,6 +31,14 @@ window.CP = window.CP || {};
     }
   }
 
+  /* 凭据是否可用：桌面版以钥匙串落盘结果为准；网页预览为内存模式，仅本次会话有效 */
+  function credentialReady(stored) {
+    return stored || !window.electronAPI;
+  }
+
+  /* 扫码登录平台（Electron 内打开官方登录页，自动捕获 Cookie） */
+  const OAUTH_PLATFORMS = ['zhihu', 'xhs'];
+
   CP.registerPage('accounts', (root) => {
     const accounts = getAccounts();
 
@@ -37,7 +46,10 @@ window.CP = window.CP || {};
       <div class="page-head fade-up">
         <div>
           <h2>账号中心</h2>
-          <p>登录你的平台账号，发布时将以该账号自动发布。账号信息仅保存在本机。</p>
+          <p>登录后可直接发布；不登录也能用「复制稿」模式，改写完复制到平台粘贴即可。</p>
+        </div>
+        <div class="page-actions">
+          <a class="btn btn-ghost" href="#/distribute">${ui().icon('copy', 15)} 跳过登录，先用复制稿</a>
         </div>
       </div>
       <div class="card fade-up" style="margin-bottom:16px">
@@ -54,15 +66,23 @@ window.CP = window.CP || {};
         <div class="card-head"><h3>发布模式说明</h3></div>
         <div class="card-body">
           <ul class="rule-list">
-            <li><span class="rl-ic">${ui().icon('send', 15)}</span><span><strong>已绑定账号</strong> → 发布时走「自动发布」，以你的账号直接发布到平台。</span></li>
-            <li><span class="rl-ic">${ui().icon('copy', 15)}</span><span><strong>未绑定账号</strong> → 使用「复制稿」模式，生成成品后手动粘贴到平台编辑器（最稳定，无需授权）。</span></li>
-            <li><span class="rl-ic">${ui().icon('link', 15)}</span><span><strong>各平台通道</strong>：CSDN 走 MetaWeblog 接口、微信公众号走官方 API、知乎走登录态接口、小红书走浏览器自动填充发布（失败回退手动确认）。平台改版可能导致通道失效，届时请升级版本。</span></li>
+            <li><span class="rl-ic">${ui().icon('copy', 15)}</span><span><strong>不登录也能用</strong> → 「复制稿」模式会生成排版好的成品，手动粘贴到平台编辑器即可，最稳定、无需授权。</span></li>
+            <li><span class="rl-ic">${ui().icon('send', 15)}</span><span><strong>登录账号后</strong> → 发布时走「自动发布」，以你的账号直接发布到平台。</span></li>
+            <li><span class="rl-ic">${ui().icon('link', 15)}</span><span><strong>登录方式</strong>：知乎、小红书为「打开官方登录页扫码」；CSDN 使用账号密码；微信公众号使用 AppID + AppSecret。平台改版可能导致通道失效，届时请升级版本。</span></li>
           </ul>
         </div>
       </div>`;
 
+    bindCardActions(root);
+  });
+
+  /* 统一的账号卡片事件绑定 */
+  function bindCardActions(root) {
     root.querySelectorAll('[data-login]').forEach(btn => {
-      btn.addEventListener('click', () => openLoginModal(btn.dataset.login, root));
+      btn.addEventListener('click', () => startLogin(btn.dataset.login, root));
+    });
+    root.querySelectorAll('[data-relogin]').forEach(btn => {
+      btn.addEventListener('click', () => startLogin(btn.dataset.relogin, root));
     });
     root.querySelectorAll('[data-logout]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -75,28 +95,36 @@ window.CP = window.CP || {};
         renderCardAll(root);
       });
     });
-  });
+  }
 
   function renderCard(p, acc) {
+    const isOauth = OAUTH_PLATFORMS.includes(p.id);
+    const loginHint = isOauth
+      ? '打开官方登录页，扫码后自动完成，无需复制 Cookie'
+      : (p.id === 'csdn' ? '使用 CSDN 账号密码登录' : '使用公众号 AppID / AppSecret 登录');
+
     if (acc && acc.linked) {
+      const ok = acc.credOk !== false;
+      const methodLabel = acc.method === 'oauth' ? '官方登录页扫码' : (p.id === 'wechat' ? 'AppID / AppSecret' : '账号密码');
       return `
         <div class="card card-hover" style="padding:18px">
           <div class="pc-top">
             <div class="plat-logo" style="background:${p.color}">${p.name[0]}</div>
             <div style="flex:1;min-width:0">
               <div class="pc-name">${p.name}</div>
-              <div class="pc-tag">${ui().icon('checkCircle', 12)} 已登录</div>
+              <div class="pc-tag">${ok ? ui().icon('checkCircle', 12) + ' 已登录' : ui().icon('alert', 12) + ' 凭据缺失'}</div>
             </div>
-            <span class="badge badge-ok">在线</span>
+            <span class="badge ${ok ? 'badge-ok' : 'badge-warn'}">${ok ? '在线' : '需重新登录'}</span>
           </div>
           <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px;background:var(--surface-2);border-radius:10px">
             <div class="sidebar-avatar" style="width:38px;height:38px;background:linear-gradient(135deg,${p.color},${p.color}cc)">${ui().esc((acc.nickname || '?')[0]).toUpperCase()}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ui().esc(acc.nickname || '已登录账号')}</div>
-              <div style="font-size:11.5px;color:var(--ink-3)">${acc.method === 'api' ? '开放 API 凭据' : (acc.method === 'oauth' ? '扫码登录（浏览器）' : '浏览器 Cookie')} · ${ui().esc(acc.updatedAt || '')}</div>
+              <div style="font-size:11.5px;color:var(--ink-3)">${methodLabel} · ${ui().esc(acc.updatedAt || '')}</div>
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:14px">
+            <button class="btn btn-ghost btn-sm" data-relogin="${p.id}" style="flex:1">${ui().icon('refresh', 13)} 重新登录</button>
             <button class="btn btn-ghost btn-sm" data-logout="${p.id}" style="flex:1">${ui().icon('x', 13)} 解绑</button>
           </div>
         </div>`;
@@ -111,218 +139,194 @@ window.CP = window.CP || {};
           </div>
           <span class="badge badge-gray">未登录</span>
         </div>
-        <div class="hint" style="margin-top:14px;line-height:1.7">登录后，分发工作台可直接以你的账号一键发布到 ${p.name}。</div>
+        <div class="hint" style="margin-top:14px;line-height:1.7">${loginHint}</div>
         <div style="display:flex;gap:8px;margin-top:14px">
-          <button class="btn btn-primary btn-sm" data-login="${p.id}" style="flex:1">${ui().icon('user', 13)} 登录账号</button>
+          <button class="btn btn-primary btn-sm" data-login="${p.id}" style="flex:1">${ui().icon(isOauth ? 'globe' : 'user', 13)} ${isOauth ? '扫码登录' : '登录账号'}</button>
         </div>
       </div>`;
   }
 
   function renderCardAll(root) {
     const list = root.querySelector('#acc-list');
-    if (list) {
-      const accounts = getAccounts();
-      list.innerHTML = M().PLATFORMS.map(p => renderCard(p, accounts[p.id])).join('');
-      list.querySelectorAll('[data-login]').forEach(btn => {
-        btn.addEventListener('click', () => openLoginModal(btn.dataset.login, root));
-      });
-      list.querySelectorAll('[data-logout]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const pid = btn.dataset.logout;
-          const acc = getAccounts();
-          delete acc[pid];
-          saveAccounts(acc);
-          try { await CP.vault.clear(pid); } catch (_) { /* 保险库不可用时忽略 */ }
-          ui().toast('已解绑该平台账号', 'info');
-          renderCardAll(root);
-        });
-      });
-    }
+    if (!list) return;
+    const accounts = getAccounts();
+    list.innerHTML = M().PLATFORMS.map(p => renderCard(p, accounts[p.id])).join('');
+    bindCardActions(root);
   }
 
-  /* 各平台 API 登录所需凭据字段 */
+  /* 各平台登录所需字段与说明 */
   const CRED_FIELDS = {
     csdn: {
+      desc: '用 CSDN 账号密码登录，发布方式与 Word 发布 CSDN 相同。',
       fields: [
-        { key: 'username', label: 'CSDN 用户名', ph: '登录 CSDN 的用户名 / 手机号', type: 'text' },
-        { key: 'password', label: 'CSDN 密码', ph: '登录密码（用于 MetaWeblog 自动发布）', type: 'password' }
+        { key: 'username', label: 'CSDN 账号', ph: '用户名 / 手机号 / 邮箱', type: 'text' },
+        { key: 'password', label: 'CSDN 密码', ph: '登录密码', type: 'password' }
       ],
-      hint: '将通过 CSDN MetaWeblog（XML-RPC）接口校验账号并发布文章，与 Word 发布 CSDN 的方式相同。'
+      hint: '账号密码只用于 MetaWeblog（XML-RPC）发布，加密保存在本机。'
     },
     wechat: {
+      desc: '填写公众号的 AppID 与 AppSecret，即可发布到公众号草稿箱。',
+      guide: '<div class="hint" style="margin-bottom:12px">在 <a href="https://mp.weixin.qq.com/" target="_blank" style="color:var(--primary);font-weight:600">微信公众平台</a> → 设置与开发 → 基本配置 中获取；AppSecret 仅显示一次，请先复制。</div>',
       fields: [
-        { key: 'appid', label: '公众号 AppID', ph: '公众平台 → 设置与开发 → 基本配置', type: 'text' },
-        { key: 'secret', label: '公众号 AppSecret', ph: 'AppSecret（本机 IP 需加入白名单）', type: 'password' }
+        { key: 'appid', label: 'AppID', ph: '例如 wx1234567890abcdef', type: 'text' },
+        { key: 'secret', label: 'AppSecret', ph: '公众号后台的基本配置中复制', type: 'password' }
       ],
-      hint: '将通过微信官方接口校验凭据，发布到公众号草稿箱。未认证的订阅号可能无法使用发布接口。'
-    },
-    xhs: {
-      fields: [{ key: 'token', label: '开放平台 Token', ph: '小红书开放平台 Token（演示）', type: 'password' }],
-      hint: '推荐使用「扫码登录」：打开小红书创作者平台扫码即可；也可以手动粘贴网页版 Cookie。'
-    },
-    zhihu: {
-      fields: [{ key: 'token', label: '开放平台 Token', ph: '知乎开放平台 Token（演示）', type: 'password' }],
-      hint: '推荐使用「扫码登录」：打开知乎登录页扫码即可；也可以手动粘贴网页版 Cookie。'
+      hint: '未认证的订阅号可能无法使用发布接口；本机 IP 需加入公众号 IP 白名单。'
     }
   };
 
-  /* 支持扫码登录（Electron 打开官方登录页）的平台 */
-  const OAUTH_PLATFORMS = ['zhihu', 'xhs'];
+  /* 统一入口：扫码平台一键登录，其余平台打开精简表单 */
+  function startLogin(pid, root) {
+    if (OAUTH_PLATFORMS.includes(pid)) return startOAuthLogin(pid, root);
+    return openApiLoginModal(pid, root);
+  }
 
-  /* ================= 登录弹窗 ================= */
-  function openLoginModal(pid, root) {
+  /* ---------- 扫码登录（知乎 / 小红书） ---------- */
+  async function startOAuthLogin(pid, root) {
     const p = M().PLATFORMS.find(x => x.id === pid);
-    const cfg = CRED_FIELDS[pid] || CRED_FIELDS.xhs;
-    const useOauth = OAUTH_PLATFORMS.includes(pid);
+    const electron = window.electronAPI;
+    if (!electron || typeof electron.loginOAuth !== 'function') {
+      return showDesktopLoginGuide(pid);
+    }
+
     ui().openModal(`
       <div class="modal-head">
-        <h3>登录 ${p.name} 账号</h3>
-        <p>选择登录方式并完成授权，发布时将使用该账号。</p>
+        <h3>登录 ${p.name}</h3>
+        <p>已打开 ${p.name} 官方登录窗口，扫码或登录后自动完成。</p>
       </div>
       <div class="modal-body">
-        <div class="label">登录方式</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          ${useOauth ? `
-          <div class="opt on" data-method="oauth">
-            <div class="opt-ic" style="color:var(--primary)">${ui().icon('globe', 17)}</div>
-            <div>
-              <div class="opt-l">扫码登录</div>
-              <div class="opt-d">打开 ${p.name} 官方登录页，扫码完成</div>
-            </div>
-          </div>` : `
-          <div class="opt on" data-method="api">
-            <div class="opt-ic" style="color:var(--primary)">${ui().icon('key', 17)}</div>
-            <div>
-              <div class="opt-l">开放 API 凭据</div>
-              <div class="opt-d">${cfg.fields.length > 1 ? '账号 + 密码 / Secret' : '平台 Token'}</div>
-            </div>
-          </div>`}
-          <div class="opt" data-method="cookie">
-            <div class="opt-ic" style="color:var(--primary)">${ui().icon('copy', 17)}</div>
-            <div>
-              <div class="opt-l">浏览器 Cookie</div>
-              <div class="opt-d">粘贴网页版登录后的 Cookie</div>
-            </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:16px;background:var(--surface-2);border-radius:10px">
+          <div class="acc-spin"></div>
+          <div>
+            <div style="font-weight:700;font-size:13.5px" id="oauth-title">等待登录…</div>
+            <div class="hint" id="oauth-msg" style="margin-top:4px">在弹出的窗口里用手机扫码，登录成功后会自动返回并保存。</div>
           </div>
         </div>
-        <div id="acc-form"></div>
+        <div class="hint" style="margin-top:12px">无需复制 Cookie，也不用重新打开页面。若窗口没有出现，请检查是否被浏览器拦截。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-mclose>关闭</button>
+      </div>`, { width: 480 });
+
+    const modal = document.querySelector('.modal');
+    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+
+    const res = await CP.api.loginOAuth(pid);
+    const titleEl = document.getElementById('oauth-title');
+    const msgEl = document.getElementById('oauth-msg');
+
+    if (res.code === 0) {
+      const nickname = res.data.nickname || p.name;
+      const stored = await storeCredential(pid, { cookie: res.data.cookie });
+      const ready = credentialReady(stored);
+      const accounts = getAccounts();
+      accounts[pid] = {
+        linked: true,
+        nickname,
+        method: 'oauth',
+        updatedAt: new Date().toLocaleDateString('zh-CN'),
+        credOk: ready
+      };
+      saveAccounts(accounts);
+      ui().toast(`已登录 ${p.name}：${nickname}`, 'ok');
+      if (!ready) ui().toast('系统安全存储不可用，凭据仅本次运行有效', 'warn');
+      const close = modal.querySelector('[data-close]');
+      if (close) close.click();
+      renderCardAll(root);
+    } else {
+      if (titleEl) titleEl.textContent = '登录未完成';
+      if (msgEl) msgEl.textContent = res.msg || '登录失败，请重试';
+    }
+  }
+
+  /* 网页预览环境：不展示复杂的 Cookie 表单，直接说明并给出替代方案 */
+  function showDesktopLoginGuide(pid) {
+    const p = M().PLATFORMS.find(x => x.id === pid);
+    ui().openModal(`
+      <div class="modal-head">
+        <h3>${p.name} 扫码登录</h3>
+        <p>桌面版会打开官方登录页，扫码后自动完成，不需要复制 Cookie。</p>
+      </div>
+      <div class="modal-body">
+        <div class="hint" style="line-height:1.8">当前是网页预览环境，无法打开平台登录窗口。请下载桌面版使用；也可以先用「复制稿」模式，不登录一样能完成改写和分发。</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-mclose>知道了</button>
+        <a class="btn btn-primary" href="#/distribute" id="acc-go-dist">${ui().icon('copy', 15)} 先用复制稿</a>
+      </div>`, { width: 460 });
+
+    const modal = document.querySelector('.modal');
+    modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+    modal.querySelector('#acc-go-dist').addEventListener('click', () => {
+      modal.closest('.modal-wrap').querySelector('[data-close]').click();
+    });
+  }
+
+  /* ---------- 账号密码 / AppID + AppSecret 登录 ---------- */
+  function openApiLoginModal(pid, root) {
+    const p = M().PLATFORMS.find(x => x.id === pid);
+    const cfg = CRED_FIELDS[pid];
+    if (!cfg) return;
+
+    ui().openModal(`
+      <div class="modal-head">
+        <h3>登录 ${p.name}</h3>
+        <p>${cfg.desc}</p>
+      </div>
+      <div class="modal-body">
+        ${cfg.guide || ''}
+        ${cfg.fields.map(f => `
+          <label class="label" style="margin-top:12px">${f.label}</label>
+          <input class="input" id="acc-${f.key}" type="${f.type}" placeholder="${f.ph}" />`).join('')}
+        <div class="hint" style="margin-top:10px">${cfg.hint}</div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
         <button class="btn btn-primary" id="acc-confirm">${ui().icon('check', 15)} 登录</button>
-      </div>`, { width: 520 });
+      </div>`, { width: 500 });
 
     const modal = document.querySelector('.modal');
-    const methodEls = modal.querySelectorAll('[data-method]');
-    const form = modal.querySelector('#acc-form');
-    const initialMethod = useOauth ? 'oauth' : 'api';
-    let method = initialMethod;
-
-    const renderForm = (m) => {
-      form.innerHTML = m === 'oauth' ? `
-          <div style="display:flex;align-items:center;gap:10px;padding:14px;background:var(--surface-2);border-radius:10px;margin-bottom:6px">
-            ${ui().icon('info', 16)}<span style="font-size:13px;color:var(--ink-2)">即将打开 ${p.name} 官方登录窗口，请在弹出的窗口中用手机扫码或账号登录，完成后自动返回。</span>
-          </div>` : m === 'api' ? `
-          <label class="label">账号昵称（显示用）</label>
-          <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
-          ${cfg.fields.map(f => `
-            <label class="label" style="margin-top:12px">${f.label}</label>
-            <input class="input" id="acc-${f.key}" type="${f.type}" placeholder="${f.ph}" />`).join('')}
-          <div class="hint">${cfg.hint}</div>` : `
-          <label class="label">账号昵称（显示用）</label>
-          <input class="input" id="acc-nick" placeholder="例如：张三的 ${p.name}" />
-          <label class="label" style="margin-top:12px">Cookie（完整复制）</label>
-          <textarea class="textarea" id="acc-cookie" rows="4" placeholder="粘贴 ${p.name} 网页版登录后浏览器里的 Cookie 字符串…"></textarea>
-          <div class="hint">演示模式：真实接入将在 Electron 内打开 ${p.name} 登录页自动捕获 Cookie。</div>`;
-    };
-    renderForm(initialMethod);
-
-    methodEls.forEach(el => {
-      el.addEventListener('click', () => {
-        methodEls.forEach(x => x.classList.toggle('on', x === el));
-        method = el.dataset.method;
-        renderForm(method);
-      });
-    });
-
     modal.querySelector('[data-mclose]').addEventListener('click', () => modal.closest('.modal-wrap').querySelector('[data-close]').click());
+
     modal.querySelector('#acc-confirm').addEventListener('click', async () => {
-      const nick = (document.getElementById('acc-nick') || {}).value?.trim() || '';
-      const cookie = (document.getElementById('acc-cookie') || {}).value?.trim() || '';
-
-      // 扫码登录：直接打开官方登录页
-      if (method === 'oauth') {
-        const btn = modal.querySelector('#acc-confirm');
-        btn.disabled = true;
-        btn.innerHTML = ui().icon('refresh', 15) + ' 等待扫码登录…';
-        const res = await CP.api.loginOAuth(pid);
-        btn.innerHTML = ui().icon('check', 15) + ' 完成';
-        if (res.code === 0) {
-          const stored = await storeCredential(pid, { cookie: res.data.cookie });
-          const accounts = getAccounts();
-          accounts[pid] = {
-            linked: true,
-            nickname: res.data.nickname,
-            method: 'oauth',
-            updatedAt: new Date().toLocaleDateString('zh-CN'),
-            credOk: stored
-          };
-          saveAccounts(accounts);
-          ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, 'ok');
-          modal.closest('.modal-wrap').querySelector('[data-close]').click();
-          renderCardAll(root);
-        } else {
-          ui().toast(res.msg || '扫码登录失败', 'warn');
-          btn.disabled = false;
-          btn.innerHTML = ui().icon('check', 15) + ' 登录';
-        }
-        return;
-      }
-
-      // 按平台收集凭据
       const credential = {};
       let missing = '';
       cfg.fields.forEach(f => {
         const v = (document.getElementById('acc-' + f.key) || {}).value?.trim() || '';
         credential[f.key] = v;
-        if (!v) missing = missing || `${f.label}不能为空`;
+        if (!v) missing = missing || `请填写${f.label}`;
       });
-      if (!nick) { ui().toast('请填写账号昵称', 'warn'); return; }
-      if (method === 'api' && missing) { ui().toast(missing, 'warn'); return; }
-      if (method === 'cookie' && !cookie) { ui().toast('请粘贴 Cookie', 'warn'); return; }
+      if (missing) { ui().toast(missing, 'warn'); return; }
 
       const btn = modal.querySelector('#acc-confirm');
       btn.disabled = true;
-      btn.innerHTML = ui().icon('refresh', 15) + ' 登录中…';
+      btn.innerHTML = ui().icon('refresh', 15) + ' 验证中…';
 
-      const res = await CP.api.loginAccount(pid, {
-        method,
-        nickname: nick,
-        credential: method === 'api' ? credential : null,
-        cookie: method === 'cookie' ? cookie : ''
-      });
-      btn.innerHTML = ui().icon('check', 15) + ' 完成';
+      const res = await CP.api.loginAccount(pid, { method: 'api', credential });
+      btn.innerHTML = ui().icon('check', 15) + ' 登录';
 
       if (res.code === 0) {
-        const stored = await storeCredential(pid, method === 'api' ? credential : { cookie });
+        const nickname = res.data.nickname || p.name;
+        const stored = await storeCredential(pid, credential);
+        const ready = credentialReady(stored);
         const accounts = getAccounts();
         accounts[pid] = {
           linked: true,
-          nickname: res.data.nickname || nick,
-          method,
+          nickname,
+          method: 'api',
           updatedAt: new Date().toLocaleDateString('zh-CN'),
           // 凭据已进入系统保险库，这里只记录状态，不落明文
-          credOk: stored
+          credOk: ready
         };
         saveAccounts(accounts);
-        ui().toast(`已登录 ${p.name}：${accounts[pid].nickname}`, stored ? 'ok' : 'warn');
-        if (!stored) ui().toast('系统安全存储不可用，凭据仅本次运行有效', 'warn');
-        modal.closest('.modal-wrap').querySelector('[data-close]').click();
+        ui().toast(`已登录 ${p.name}：${nickname}`, 'ok');
+        if (!ready) ui().toast('系统安全存储不可用，凭据仅本次运行有效', 'warn');
+        const close = modal.querySelector('[data-close]');
+        if (close) close.click();
         renderCardAll(root);
       } else {
-        ui().toast(res.msg || '登录失败', 'warn');
         btn.disabled = false;
-        btn.innerHTML = ui().icon('check', 15) + ' 登录';
+        ui().toast(res.msg || '登录失败', 'warn');
       }
     });
   }

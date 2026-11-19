@@ -535,7 +535,10 @@ window.CP = window.CP || {};
       // 浏览器回退：模拟校验（演示）
       if (method === 'cookie' && !cookie) return { code: 1, msg: 'Cookie 为空' };
       if (method === 'api' && !credential) return { code: 1, msg: '凭据为空' };
-      return { code: 0, data: { nickname: nickname || plat.name + '用户', method } };
+      const fallbackNick = nickname
+        || (credential && (credential.username || credential.appid))
+        || plat.name + '用户';
+      return { code: 0, data: { nickname: fallbackNick, method } };
     },
 
     /* --------------------------------------------------------
