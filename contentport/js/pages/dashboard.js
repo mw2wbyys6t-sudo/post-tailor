@@ -184,13 +184,13 @@ window.CP = window.CP || {};
               <div class="ar-main">
                 <div class="ar-title">${ui().esc(a.title)}</div>
                 <div class="ar-meta">
-                  <span class="tag ${tagClass(a.category)}">${a.category}</span>
-                  <span>${a.wordCount} 字</span>
-                  <span>${a.readMin} 分钟</span>
-                  <span>${a.createdAt}</span>
+                  <span class="tag ${tagClass(a.category)}">${ui().esc(a.category)}</span>
+                  <span>${ui().esc(a.wordCount)} 字</span>
+                  <span>${ui().esc(a.readMin)} 分钟</span>
+                  <span>${ui().esc(a.createdAt)}</span>
                 </div>
               </div>
-              <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${a.status}</span>
+              <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${ui().esc(a.status)}</span>
             </div>`).join('') || '<div class="empty"><div class="empty-ic">' + ui().icon('book', 26) + '</div><h4>还没有文章</h4><p>点击右上角「导入文章」开始创作</p></div>'}
         </div>
       </div>`;

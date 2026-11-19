@@ -9,6 +9,11 @@ const fs = require('fs');
 
 const isDev = !app.isPackaged;
 
+/* 渲染进程同步读取应用版本，避免界面版本号写死 */
+ipcMain.on('app:version', (event) => {
+  event.returnValue = app.getVersion();
+});
+
 /* 品牌改名后仍沿用原数据目录，避免用户已有的文章 / 发布记录 / 登录态丢失 */
 try {
   app.setPath('userData', path.join(app.getPath('appData'), 'ContentPort'));

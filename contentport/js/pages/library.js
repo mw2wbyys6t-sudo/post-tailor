@@ -119,16 +119,16 @@ window.CP = window.CP || {};
             <div class="card card-hover article-card" data-aid="${a.id}" draggable="true" title="拖拽排序 / 点击查看详情">
               <div class="ac-body">
                 <div class="ac-meta" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-                  <span class="tag ${CP.tagClass(a.category)}">${a.category}</span>
-                  <span class="tag tag-default">${a.source}</span>
+                  <span class="tag ${CP.tagClass(a.category)}">${ui().esc(a.category)}</span>
+                  <span class="tag tag-default">${ui().esc(a.source)}</span>
                   ${(a.tags || []).map(t => `<span class="tag tag-tag">#${ui().esc(t)}</span>`).join('')}
                 </div>
                 <div class="ac-title">${ui().esc(a.title)}</div>
                 <div class="ac-sum">${ui().esc(a.summary)}</div>
               </div>
               <div class="ac-foot">
-                <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${a.status}</span>
-                <span style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${a.wordCount} 字 · ${a.createdAt}</span>
+                <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${ui().esc(a.status)}</span>
+                <span style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${ui().esc(a.wordCount)} 字 · ${ui().esc(a.createdAt)}</span>
                 <button class="btn btn-ghost btn-sm" data-aid="${a.id}" data-act="delete" title="删除文章">${ui().icon('trash', 13)}</button>
                 <button class="btn btn-ghost btn-sm" data-aid="${a.id}" data-act="edit">${ui().icon('pen', 13)} 编辑</button>
                 <button class="btn btn-primary btn-sm" data-aid="${a.id}" data-act="distribute">${ui().icon('send', 13)} 分发</button>
@@ -219,7 +219,7 @@ window.CP = window.CP || {};
       <div class="modal-head" style="display:flex;align-items:center;gap:12px;padding-right:60px">
         <div>
           <h3>${ui().esc(a.title)}</h3>
-          <p>${a.category} · ${a.wordCount} 字 · ${a.readMin} 分钟 · ${a.createdAt} · 来源 ${a.source}</p>
+          <p>${ui().esc(a.category)} · ${ui().esc(a.wordCount)} 字 · ${ui().esc(a.readMin)} 分钟 · ${ui().esc(a.createdAt)} · 来源 ${ui().esc(a.source)}</p>
         </div>
       </div>
       <div class="modal-body">

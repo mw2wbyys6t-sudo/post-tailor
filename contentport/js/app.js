@@ -51,7 +51,7 @@ window.CP = window.CP || {};
             </div>
             <button class="btn btn-ghost btn-sm" data-act="settings" title="设置">${ui().icon('settings', 15)}</button>
           </div>
-          <div class="sidebar-ver"><span>v1.4.0</span><span>离线优先</span></div>
+          <div class="sidebar-ver"><span>${window.electronAPI && window.electronAPI.appVersion ? 'v' + window.electronAPI.appVersion : '网页预览'}</span><span>离线优先</span></div>
         </aside>
         <div class="main">
           <header class="topbar">

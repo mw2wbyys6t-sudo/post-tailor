@@ -532,13 +532,8 @@ window.CP = window.CP || {};
         }
       }
 
-      // 浏览器回退：模拟校验（演示）
-      if (method === 'cookie' && !cookie) return { code: 1, msg: 'Cookie 为空' };
-      if (method === 'api' && !credential) return { code: 1, msg: '凭据为空' };
-      const fallbackNick = nickname
-        || (credential && (credential.username || credential.appid))
-        || plat.name + '用户';
-      return { code: 0, data: { nickname: fallbackNick, method } };
+      // 浏览器预览：没有桌面端登录通道，不做假校验，避免出现“看起来登录了其实没登录”
+      return { code: 2, msg: '网页预览不支持真实账号校验，请在桌面版登录' };
     },
 
     /* --------------------------------------------------------
@@ -588,9 +583,8 @@ window.CP = window.CP || {};
       // 已登录账号 → 自动发布；否则复制稿模式
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];
-      // 凭据从系统保险库读取，渲染进程不再持有明文
-      const credential = await vault.get(platformId);
-      const credOk = !!(acc && acc.linked && credential && acc.credOk !== false);
+      // 凭据只保存在系统保险库，发布时由主进程按平台读取，渲染进程不参与明文传递
+      const credOk = !!(acc && acc.linked && acc.credOk !== false);
       // 仅「已接入真实通道 + 已绑定账号 + 凭据可用 + Electron 通道可用」才走自动发布
       const realReady = REAL_PLATFORM_IDS.includes(platformId);
       const electron = window.electronAPI;
@@ -627,7 +621,6 @@ window.CP = window.CP || {};
         try {
           const result = await electron.publishTo({
             platformId,
-            credential,
             title,
             content: body,
             digest: (article && article.summary) || ''
@@ -673,14 +666,13 @@ window.CP = window.CP || {};
       if (!postId) return { code: 1, msg: '该记录没有可回拉的文章标识（小红书为浏览器辅助发布，暂不支持回拉）' };
       const accounts = S().settings.accounts || {};
       const acc = accounts[platformId];
-      const credential = await vault.get(platformId);
-      if (!acc || !acc.linked || !credential) return { code: 1, msg: '请先到账号中心登录该平台账号' };
+      if (!acc || !acc.linked || acc.credOk === false) return { code: 1, msg: '请先到账号中心登录该平台账号' };
       const electron = window.electronAPI;
       if (!electron || typeof electron.fetchStats !== 'function') {
         return { code: 1, msg: '数据回拉仅支持 Electron 桌面版' };
       }
       try {
-        const stats = await electron.fetchStats({ platformId, credential, postId });
+        const stats = await electron.fetchStats({ platformId, postId });
         return { code: 0, data: stats };
       } catch (e) {
         return { code: 1, msg: e.message || '数据回拉失败' };

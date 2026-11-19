@@ -329,6 +329,7 @@ window.CP = window.CP || {};
         <p>${cfg.desc}</p>
       </div>
       <div class="modal-body">
+        ${!window.electronAPI ? '<div class="hint" style="margin-bottom:10px;color:var(--amber)">当前是网页预览环境，账号校验需要在桌面版完成。</div>' : ''}
         ${cfg.guide || ''}
         ${cfg.fields.map(f => `
           <label class="label" style="margin-top:12px">${f.label}</label>

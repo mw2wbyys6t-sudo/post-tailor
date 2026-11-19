@@ -186,14 +186,14 @@ window.CP = window.CP || {};
               <td><span style="display:inline-flex;align-items:center;gap:7px;font-weight:600"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:${p.color}"></span>${p.name}</span></td>
               <td>${h.accountNickname ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${ui().icon('user', 12)} ${ui().esc(h.accountNickname)}</span>` : '<span style="font-size:11.5px;color:var(--ink-4)">复制稿</span>'}</td>
               <td>
-                <span class="badge ${stCls}">${statusText}</span>
+                <span class="badge ${stCls}">${ui().esc(statusText)}</span>
                 ${h.failReason ? `<div style="font-size:10.5px;color:var(--danger);margin-top:4px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${ui().esc(h.failReason)}">${ui().esc(h.failReason)}</div>` : ''}
               </td>
               <td class="t-score" style="color:${h.score >= 90 ? 'var(--ok)' : h.score >= 80 ? 'var(--amber)' : 'var(--ink-3)'}">${h.score || '—'}</td>
               <td>${stat(h.views)}</td>
               <td>${stat(h.likes)}</td>
               <td>${stat(h.comments)}</td>
-              <td style="font-size:12px;color:var(--ink-3)">${h.time}${h.lastSync ? `<div style="font-size:11px;color:var(--ink-4)">${h.lastSync} 更新</div>` : ''}</td>
+              <td style="font-size:12px;color:var(--ink-3)">${ui().esc(h.time)}${h.lastSync ? `<div style="font-size:11px;color:var(--ink-4)">${ui().esc(h.lastSync)} 更新</div>` : ''}</td>
               <td>
                 <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">
                   ${contentOf(h) ? `<button class="btn btn-ghost btn-sm" data-viewcontent="${h.id}">${ui().icon('fileText', 12)} 查看稿</button>` : ''}

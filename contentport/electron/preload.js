@@ -24,5 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   secureDelete: (key) => ipcRenderer.invoke('secure:delete', { key }),
   // 环境信息
   isElectron: true,
+  appVersion: ipcRenderer.sendSync('app:version'),
   platform: process.platform
 });

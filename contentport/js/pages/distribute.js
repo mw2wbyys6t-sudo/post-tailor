@@ -62,10 +62,10 @@ window.CP = window.CP || {};
           </div>
           <div class="article-src" style="flex:1;display:flex;flex-direction:column">
             <div class="as-meta">
-              <span>${ui().icon('fileText', 13)} ${article.category}</span>
-              <span>${ui().icon('pen', 13)} ${article.wordCount} 字</span>
-              <span>${ui().icon('clock', 13)} ${article.readMin} 分钟</span>
-              <span class="badge ${article.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${article.status}</span>
+              <span>${ui().icon('fileText', 13)} ${ui().esc(article.category)}</span>
+              <span>${ui().icon('pen', 13)} ${ui().esc(article.wordCount)} 字</span>
+              <span>${ui().icon('clock', 13)} ${ui().esc(article.readMin)} 分钟</span>
+              <span class="badge ${article.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${ui().esc(article.status)}</span>
             </div>
             <div class="md-body">${ui().renderMd(article.body)}</div>
           </div>
@@ -792,9 +792,9 @@ window.CP = window.CP || {};
           <div class="article-row" data-aid="${a.id}" data-pick style="cursor:pointer">
             <div class="ar-main">
               <div class="ar-title">${ui().esc(a.title)}</div>
-              <div class="ar-meta"><span class="tag ${CP.tagClass(a.category)}">${a.category}</span><span>${a.wordCount} 字</span></div>
+              <div class="ar-meta"><span class="tag ${CP.tagClass(a.category)}">${ui().esc(a.category)}</span><span>${ui().esc(a.wordCount)} 字</span></div>
             </div>
-            <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${a.status}</span>
+            <span class="badge ${a.status === '已发布' ? 'badge-ok' : 'badge-warn'}">${ui().esc(a.status)}</span>
           </div>`).join('')}
       </div>
       <div class="modal-foot">
