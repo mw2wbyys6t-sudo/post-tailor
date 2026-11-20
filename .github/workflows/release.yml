@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contentport
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: contentport/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run eval
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: contentport
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: contentport/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx electron-builder --win nsis --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            contentport/release/*.exe
+            contentport/release/latest.yml
+            contentport/release/*.blockmap
+          if-no-files-found: error
+
+  build-linux:
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contentport
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: contentport/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx electron-builder --linux AppImage --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            contentport/release/*.AppImage
+            contentport/release/latest-linux.yml
+            contentport/release/*.blockmap
+          if-no-files-found: error
+
+  publish:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

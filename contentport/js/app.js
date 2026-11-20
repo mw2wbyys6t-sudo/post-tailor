@@ -197,6 +197,13 @@ window.CP = window.CP || {};
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" id="set-clear-drafts">${ui().icon('trash', 13)} 清理编辑器草稿</button>
         </div>
+        ${window.electronAPI ? `
+        <div class="divider"></div>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('download', 14)} 应用更新</div>
+        <div class="hint" style="margin-top:6px">当前版本 v${ui().esc(window.electronAPI.appVersion || '')}。发现新版本会在后台自动下载，重启后生效。</div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="set-check-update">${ui().icon('refresh', 13)} 检查更新</button>
+        </div>` : ''}
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-mclose>取消</button>
@@ -318,6 +325,25 @@ window.CP = window.CP || {};
       ui().toast('已清理编辑器草稿', 'ok');
     });
 
+    const checkUpdateBtn = modal.querySelector('#set-check-update');
+    if (checkUpdateBtn) {
+      checkUpdateBtn.addEventListener('click', async () => {
+        checkUpdateBtn.disabled = true;
+        const original = checkUpdateBtn.innerHTML;
+        checkUpdateBtn.innerHTML = ui().icon('refresh', 13) + ' 检查中…';
+        const res = await window.electronAPI.checkUpdate();
+        checkUpdateBtn.disabled = false;
+        checkUpdateBtn.innerHTML = original;
+        if (!res || !res.ok) {
+          ui().toast((res && res.msg) || '检查更新失败', 'warn');
+        } else if (res.version && res.version !== window.electronAPI.appVersion) {
+          ui().toast(`发现新版本 v${res.version}，正在后台下载`, 'info');
+        } else {
+          ui().toast('当前已是最新版本', 'ok');
+        }
+      });
+    }
+
     function collectAutoPull() {
       return {
         enabled: !!modal.querySelector('#ap-enabled').checked,
@@ -423,6 +449,58 @@ window.CP = window.CP || {};
     }
   }
 
+  /* ---------- 应用更新提示 ---------- */
+  function initUpdateUI() {
+    const e = window.electronAPI;
+    if (!e || typeof e.onUpdateStatus !== 'function') return;
+    let box = null;
+    let dismissed = false;
+    const hide = () => { if (box) { box.remove(); box = null; } };
+    const ensure = () => {
+      if (!box) {
+        box = document.createElement('div');
+        box.className = 'update-toast';
+        document.body.appendChild(box);
+      }
+      return box;
+    };
+    const render = (d) => {
+      if (!d || dismissed) return;
+      if (d.state === 'available') {
+        ensure().innerHTML = `
+          <div class="ut-main">
+            <div class="ut-title">${ui().icon('download', 16)} 发现新版本 v${ui().esc(d.version || '')}</div>
+            <div class="ut-desc">正在后台下载，完成后会提示你重启。</div>
+          </div>`;
+      } else if (d.state === 'downloading') {
+        const pct = Math.max(0, Math.min(100, Number(d.percent) || 0));
+        ensure().innerHTML = `
+          <div class="ut-main">
+            <div class="ut-title">${ui().icon('download', 16)} 正在下载更新 ${pct}%</div>
+            <div class="ut-desc">下载完成后可一键重启生效。</div>
+          </div>`;
+      } else if (d.state === 'downloaded') {
+        ensure().innerHTML = `
+          <div class="ut-main">
+            <div class="ut-title">${ui().icon('checkCircle', 16)} v${ui().esc(d.version || '')} 已下载完成</div>
+            <div class="ut-desc">重启应用即可使用新版本，也可以稍后退出时自动安装。</div>
+          </div>
+          <div class="ut-actions">
+            <button class="btn btn-primary btn-sm" id="ut-install">立即重启更新</button>
+            <button class="btn btn-ghost btn-sm" id="ut-later">稍后</button>
+          </div>`;
+        const install = document.getElementById('ut-install');
+        const later = document.getElementById('ut-later');
+        if (install) install.addEventListener('click', async () => { await e.installUpdate(); });
+        if (later) later.addEventListener('click', () => { dismissed = true; hide(); });
+      }
+    };
+    e.onUpdateStatus(render);
+    if (typeof e.getUpdateStatus === 'function') {
+      e.getUpdateStatus().then(render).catch(() => { /* ignore */ });
+    }
+  }
+
   /* ---------- 初始化 ---------- */
   async function init() {
     try { await CP.vault.migrate(); } catch (_) { /* 保险库不可用时保持原样 */ }
@@ -432,6 +510,7 @@ window.CP = window.CP || {};
     window.addEventListener('hashchange', render);
     restartAutoPull();
     initScheduler();
+    initUpdateUI();
   }
 
   document.addEventListener('DOMContentLoaded', init);

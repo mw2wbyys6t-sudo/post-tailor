@@ -1,7 +1,7 @@
 {
   "name": "omnidraft",
   "productName": "OmniDraft",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "一稿千面：把一篇文章改写成各平台原生版本，分发并回拉数据",
   "main": "electron/main.js",
   "author": "OmniDraft",
@@ -15,18 +15,21 @@
     "dev": "electron . --dev",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
+    "dist:win": "electron-builder --win nsis",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux",
+    "dist:linux": "electron-builder --linux AppImage",
     "test": "node --test",
     "eval": "node eval/run.js",
     "eval:ai": "node eval/run.js --ai",
     "eval:baseline": "node eval/run.js --engine=both --save-baseline",
     "eval:calibrate": "node eval/calibrate.js"
   },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "com.omnidraft.app",
@@ -42,17 +45,31 @@
       "electron/**/*",
       "assets/**/*"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mw2wbyys6t-sudo",
+        "repo": "post-tailor"
+      }
+    ],
     "win": {
       "target": [
         {
-          "target": "zip",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ],
-      "artifactName": "OmniDraft-Win-x64-${version}.zip",
+      "artifactName": "OmniDraft-Win-x64-${version}.${ext}",
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
       "target": [
@@ -69,13 +86,13 @@
     "linux": {
       "target": [
         {
-          "target": "zip",
+          "target": "AppImage",
           "arch": [
             "x64"
           ]
         }
       ],
-      "artifactName": "OmniDraft-Linux-x64-${version}.zip",
+      "artifactName": "OmniDraft-Linux-x64-${version}.${ext}",
       "category": "Office"
     }
   }

@@ -4,6 +4,7 @@
    - ipcMain 代理 AI 请求（绕过浏览器 CORS，Key 不出本机）
    ========================================================= */
 const { app, BrowserWindow, ipcMain, shell, session, clipboard, safeStorage } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
@@ -561,8 +562,60 @@ ipcMain.handle('platform:stats', async (_event, payload) => {
   }
 });
 
+/* ---------- 自动更新 ----------
+   打包后启动 8 秒检查一次，此后每 6 小时检查；发现新版本自动后台下载，
+   下载完成后由界面提示「重启更新」，退出应用时也会自动安装。 */
+let lastUpdateStatus = { state: 'idle' };
+
+function pushUpdateStatus(state, payload = {}) {
+  lastUpdateStatus = { state, ...payload, at: Date.now() };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send('update:status', lastUpdateStatus); } catch (_) { /* ignore */ }
+  }
+}
+
+function initAutoUpdate() {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => pushUpdateStatus('checking'));
+  autoUpdater.on('update-available', (info) => pushUpdateStatus('available', { version: info && info.version }));
+  autoUpdater.on('update-not-available', () => pushUpdateStatus('none'));
+  autoUpdater.on('download-progress', (p) => pushUpdateStatus('downloading', { percent: Math.round((p && p.percent) || 0) }));
+  autoUpdater.on('update-downloaded', (info) => pushUpdateStatus('downloaded', { version: info && info.version }));
+  autoUpdater.on('error', (err) => pushUpdateStatus('error', { message: (err && err.message) || '检查更新失败' }));
+
+  const check = () => {
+    autoUpdater.checkForUpdates().catch((e) => {
+      pushUpdateStatus('error', { message: e.message || '检查更新失败' });
+    });
+  };
+  setTimeout(check, 8000);
+  setInterval(check, 6 * 60 * 60 * 1000);
+}
+
+ipcMain.handle('update:get-status', () => lastUpdateStatus);
+
+ipcMain.handle('update:check', async () => {
+  if (!app.isPackaged) return { ok: false, msg: '开发模式不检查更新' };
+  try {
+    const res = await autoUpdater.checkForUpdates();
+    return { ok: true, version: res && res.updateInfo ? res.updateInfo.version : '' };
+  } catch (e) {
+    return { ok: false, msg: e.message || '检查更新失败' };
+  }
+});
+
+ipcMain.handle('update:install', () => {
+  if (!app.isPackaged) return { ok: false, msg: '开发模式不支持安装更新' };
+  setImmediate(() => autoUpdater.quitAndInstall());
+  return { ok: true };
+});
+
 app.whenReady().then(() => {
   createWindow();
+  initAutoUpdate();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

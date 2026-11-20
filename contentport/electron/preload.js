@@ -22,6 +22,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   secureSet: (key, value) => ipcRenderer.invoke('secure:set', { key, value }),
   secureGet: (key) => ipcRenderer.invoke('secure:get', { key }),
   secureDelete: (key) => ipcRenderer.invoke('secure:delete', { key }),
+  // 自动更新（检查 / 状态订阅 / 重启安装）
+  getUpdateStatus: () => ipcRenderer.invoke('update:get-status'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('update:status', handler);
+    return () => ipcRenderer.removeListener('update:status', handler);
+  },
   // 环境信息
   isElectron: true,
   appVersion: ipcRenderer.sendSync('app:version'),

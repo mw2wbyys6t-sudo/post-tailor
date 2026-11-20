@@ -12,7 +12,7 @@
   <a href="https://github.com/mw2wbyys6t-sudo/post-tailor/releases/latest"><img src="https://img.shields.io/github/v/release/mw2wbyys6t-sudo/post-tailor?color=E8A33D&label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/mw2wbyys6t-sudo/post-tailor?color=4F8A7B" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-3B7EA1" alt="Platform">
-  <img src="https://img.shields.io/badge/Electron-33-47848F" alt="Electron 33">
+  <img src="https://img.shields.io/badge/Electron-45-47848F" alt="Electron 45">
 </p>
 
 OmniDraft 是一个本地优先的桌面应用（Electron）。它把"一篇文章复制到四个平台"这件事拆成三步：**先理解文章，再按平台重写，最后发布并看数据**。
@@ -95,8 +95,10 @@ OmniDraft 的答案是：**内容分析 → 平台规划 → 分平台成稿 →
 
 到 [Releases](https://github.com/mw2wbyys6t-sudo/post-tailor/releases) 下载：
 
-- `OmniDraft-Win-x64-*.zip`：Windows 便携版（解压即用）
-- `OmniDraft-Linux-x64-*.zip`：Linux 便携版
+- `OmniDraft-Win-x64-*.exe`：Windows 安装版（安装后自动更新）
+- `OmniDraft-Linux-x64-*.AppImage`：Linux 版（下载后 `chmod +x` 运行，自动更新）
+
+> 应用启动后会在后台检查更新，发现新版本自动下载，提示「立即重启更新」；也可以在「设置 → 应用更新」中手动检查。更新包来自本仓库的 Release，不经过第三方服务器。
 
 ### 从源码运行
 
@@ -244,7 +246,7 @@ npm run eval:calibrate -- --file=./history.json   # 用真实回拉数据做相�
 
 ## 技术栈
 
-Electron 33 + 原生 HTML / CSS / JavaScript（零框架）+ 纯 SVG 图表 + 零依赖改写引擎。
+Electron 45 + 原生 HTML / CSS / JavaScript（零框架）+ 纯 SVG 图表 + 零依赖改写引擎。
 
 ## License
 
