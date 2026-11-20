@@ -3,12 +3,46 @@
    - 创建桌面窗口并加载前端
    - ipcMain 代理 AI 请求（绕过浏览器 CORS，Key 不出本机）
    ========================================================= */
-const { app, BrowserWindow, ipcMain, shell, session, clipboard, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, clipboard, safeStorage, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
 const isDev = !app.isPackaged;
+
+/* ---------- 本地诊断日志 ----------
+   只写本机文件，不上传；用于用户主动导出后排查启动/发布问题。
+   单文件超过 1.5 MB 自动轮转一份 .1，避免无限增长。 */
+const MAX_LOG_BYTES = 1.5 * 1024 * 1024;
+
+function logDir() {
+  return path.join(app.getPath('userData'), 'logs');
+}
+function logFile() {
+  return path.join(logDir(), 'omnidraft.log');
+}
+function logLine(level, message, scope) {
+  try {
+    const dir = logDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const file = logFile();
+    try {
+      if (fs.statSync(file).size > MAX_LOG_BYTES) {
+        try { fs.unlinkSync(file + '.1'); } catch (_) { /* 旧轮转文件不存在 */ }
+        fs.renameSync(file, file + '.1');
+      }
+    } catch (_) { /* 文件不存在时忽略 */ }
+    const line = `[${new Date().toISOString()}] [${level}]${scope ? ' [' + scope + ']' : ''} ${String(message || '').slice(0, 4000)}\n`;
+    fs.appendFileSync(file, line);
+  } catch (_) { /* 日志失败不能影响主流程 */ }
+}
+function logError(scope, err) {
+  const msg = err && err.stack ? err.stack : (err && err.message) || String(err || '未知错误');
+  logLine('error', msg, scope);
+}
+
+process.on('uncaughtException', (err) => logError('main:uncaughtException', err));
+process.on('unhandledRejection', (reason) => logError('main:unhandledRejection', reason));
 
 /* 渲染进程同步读取应用版本，避免界面版本号写死 */
 ipcMain.on('app:version', (event) => {
@@ -43,6 +77,13 @@ function createWindow() {
   win.loadFile(path.join(__dirname, '..', 'index.html'));
   mainWindow = win;
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
+  win.on('unresponsive', () => logLine('warn', '窗口无响应', 'window'));
+  win.webContents.on('render-process-gone', (_e, details) => {
+    logLine('error', `渲染进程退出：${(details && details.reason) || 'unknown'}`, 'renderer');
+  });
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    logLine('error', `页面加载失败 ${code} ${desc} ${url || ''}`, 'renderer');
+  });
 
   // 外部链接用系统浏览器打开
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -562,6 +603,54 @@ ipcMain.handle('platform:stats', async (_event, payload) => {
   }
 });
 
+/* ---------- 诊断日志 IPC ---------- */
+ipcMain.handle('diag:append', (_event, payload = {}) => {
+  const level = String(payload.level || 'error').slice(0, 12);
+  const scope = String(payload.scope || 'renderer').slice(0, 40);
+  logLine(level, payload.message, scope);
+  return { ok: true };
+});
+
+ipcMain.handle('diag:export', async () => {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const opts = {
+    title: '导出诊断日志',
+    defaultPath: path.join(app.getPath('downloads'), `OmniDraft-diagnostics-${stamp}.log`),
+    filters: [{ name: '日志文件', extensions: ['log', 'txt'] }]
+  };
+  const { canceled, filePath } = mainWindow
+    ? await dialog.showSaveDialog(mainWindow, opts)
+    : await dialog.showSaveDialog(opts);
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  try {
+    const header = [
+      `OmniDraft 诊断日志`,
+      `版本：${app.getVersion()}`,
+      `平台：${process.platform} ${process.arch}`,
+      `导出时间：${new Date().toISOString()}`,
+      `说明：日志只包含本机运行与错误信息，不含文章正文、AI Key 或平台凭据。`,
+      ''
+    ].join('\n');
+    let body = '';
+    try { body = fs.readFileSync(logFile(), 'utf8'); } catch (_) { body = '（暂无日志）\n'; }
+    fs.writeFileSync(filePath, header + body);
+    return { ok: true, path: filePath };
+  } catch (e) {
+    logError('diag:export', e);
+    return { ok: false, msg: e.message || '导出失败' };
+  }
+});
+
+ipcMain.handle('diag:open-folder', async () => {
+  try {
+    fs.mkdirSync(logDir(), { recursive: true });
+    await shell.openPath(logDir());
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, msg: e.message || '无法打开日志目录' };
+  }
+});
+
 /* ---------- 自动更新 ----------
    打包后启动 8 秒检查一次，此后每 6 小时检查；发现新版本自动后台下载，
    下载完成后由界面提示「重启更新」，退出应用时也会自动安装。 */
@@ -614,6 +703,7 @@ ipcMain.handle('update:install', () => {
 });
 
 app.whenReady().then(() => {
+  logLine('info', `启动 v${app.getVersion()} / Electron ${process.versions.electron} / ${process.platform} ${process.arch}`, 'app');
   createWindow();
   initAutoUpdate();
   app.on('activate', () => {

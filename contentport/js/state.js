@@ -11,7 +11,6 @@ window.CP = window.CP || {};
     articles: 'cp.articles.v1',
     history: 'cp.history.v1',
     settings: 'cp.settings.v1',
-    sniffDone: 'cp.sniffDone.v1',
     scheduled: 'cp.scheduled.v1',
     rewrites: 'cp.rewrites.v1',
     drafts: 'cp.drafts.v1',
@@ -47,7 +46,6 @@ window.CP = window.CP || {};
       ai: { baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat' },
       autoPull: { enabled: true, interval: 30 }
     }),
-    sniffDone: load(LS.sniffDone, false),         // 是否完成过嗅探
     scheduledPublishes: load(LS.scheduled, []),   // 定时发布任务队列
     rewrites: load(LS.rewrites, {}),              // 改写稿持久化 { articleId: { platformId: result } }
     drafts: load(LS.drafts, {}),                  // 编辑器草稿 { articleId|'new': { title, body, ... } }
@@ -259,10 +257,6 @@ window.CP = window.CP || {};
       state.scheduledPublishes = state.scheduledPublishes.filter(x => x.id !== id);
       save(LS.scheduled, state.scheduledPublishes);
     },
-    markSniffDone() {
-      state.sniffDone = true;
-      save(LS.sniffDone, true);
-    },
     /* ---- 分发工作台 ---- */
     setActiveArticle(id) {
       state.ui.activeArticleId = id;
@@ -333,7 +327,6 @@ window.CP = window.CP || {};
           history: state.history,
           scheduledPublishes: state.scheduledPublishes,
           rewrites: state.rewrites,
-          sniffDone: state.sniffDone,
           settings: {
             ai: { baseUrl: (s.ai && s.ai.baseUrl) || '', model: (s.ai && s.ai.model) || '', apiKey: '' },
             autoPull: s.autoPull || { enabled: true, interval: 30 },
@@ -358,7 +351,6 @@ window.CP = window.CP || {};
       state.history = d.history;
       state.scheduledPublishes = Array.isArray(d.scheduledPublishes) ? d.scheduledPublishes : [];
       state.rewrites = d.rewrites && typeof d.rewrites === 'object' ? d.rewrites : {};
-      state.sniffDone = !!d.sniffDone;
       const incoming = d.settings || {};
       state.settings = {
         ai: {
@@ -377,7 +369,6 @@ window.CP = window.CP || {};
       save(LS.history, state.history);
       save(LS.scheduled, state.scheduledPublishes);
       save(LS.rewrites, state.rewrites);
-      save(LS.sniffDone, state.sniffDone);
       save(LS.settings, state.settings);
       // 备份可能来自旧版本，用发布记录重新校准文章状态
       state.articles.forEach(a => syncArticleStatus(a.id));

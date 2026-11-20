@@ -1,6 +1,6 @@
 /* =========================================================
    OmniDraft · 工作台（dashboard.js）
-   数据总览 + 分发流程引导 + 平台热度 + 近期文章
+   数据总览 + 分发流程引导 + 平台发布通道 + 近期文章
    ========================================================= */
 window.CP = window.CP || {};
 
@@ -22,16 +22,19 @@ window.CP = window.CP || {};
       .flatMap(h => h.series.map(s => ({ t: s.t, views: Number(s.views) || 0 })));
     const trend = buildTrend(seriesAll);
 
+    const accounts = S().settings.accounts || {};
+    const linkedCount = M().PLATFORMS.filter(p => accounts[p.id] && accounts[p.id].linked).length;
+
     const flowDone = {
       profile: !!portrait,
-      sniff: S().sniffDone,
+      accounts: linkedCount > 0,
       rewrite: S().ui.rewriteResults && Object.keys(S().ui.rewriteResults).length > 0,
       publish: history.length > 0
     };
 
     const steps = [
       { k: 'profile', n: '01', t1: '建立用户画像', t2: portrait ? '已完成' : '回答问题，了解你的创作定位' },
-      { k: 'sniff', n: '02', t1: '嗅探平台受众', t2: S().sniffDone ? '已完成平台受众分析' : '分析 4 个平台的读者画像' },
+      { k: 'accounts', n: '02', t1: '登录平台账号', t2: linkedCount ? `${linkedCount}/${M().PLATFORMS.length} 个平台已登录` : '登录后可直接发布' },
       { k: 'rewrite', n: '03', t1: '自适应改写', t2: flowDone.rewrite ? '已有改写结果' : '一稿生成多平台原生版本' },
       { k: 'publish', n: '04', t1: '一键发布', t2: flowDone.publish ? '已发布多篇内容' : '自动发布或复制稿直达' }
     ];
@@ -113,13 +116,15 @@ window.CP = window.CP || {};
       <div class="split" style="margin-bottom:18px">
         <div class="card">
           <div class="card-head">
-            <h3>平台受众热度</h3>
-            <button class="btn btn-ghost btn-sm more" data-act="go-audience">${ui().icon('radar', 14)} 详细嗅探</button>
+            <h3>平台发布通道</h3>
+            <button class="btn btn-ghost btn-sm more" data-act="go-accounts">${ui().icon('key', 14)} 账号中心</button>
           </div>
           <div class="card-body">
             <div class="plat-grid">
-              ${M().PLATFORMS.map((p, i) => {
+              ${M().PLATFORMS.map(p => {
                 const cnt = history.filter(h => h.platformId === p.id).length;
+                const acc = accounts[p.id] || {};
+                const linked = !!acc.linked;
                 return `
                 <div class="card card-hover plat-card" data-plat="${p.id}" data-act="plat-card" style="padding:14px">
                   <div class="pc-top">
@@ -129,12 +134,11 @@ window.CP = window.CP || {};
                       <div class="pc-tag">${p.tagline}</div>
                     </div>
                   </div>
-                  <div class="pc-heat" title="由平台画像雷达推导，非实时平台热度">${ui().icon('flame', 13)} 画像强度 ${heatOf(p.id)}</div>
-                  <div class="heat-bar"><i style="width:${heatOf(p.id)}%;background:${p.color}"></i></div>
+                  <div class="pc-heat" title="${linked ? '已登录，可直接自动发布' : '未登录，发布时生成复制稿'}">${ui().icon(linked ? 'checkCircle' : 'key', 13)} ${linked ? '已登录 · 可自动发布' : '未登录 · 复制稿发布'}</div>
+                  <div class="heat-bar"><i style="width:${linked ? 100 : 0}%;background:${p.color}"></i></div>
                   <div class="pc-stat">
                     <div class="ps"><div class="ps-v">${cnt}</div><div class="ps-l">已分发</div></div>
-                    <div class="ps"><div class="ps-v">${p.trending.length}</div><div class="ps-l">热门话题</div></div>
-                    <div class="ps"><div class="ps-v">${p.radar.depth}</div><div class="ps-l">深度指数</div></div>
+                    <div class="ps"><div class="ps-v" style="font-size:11.5px">${p.lengthRule}</div><div class="ps-l">篇幅规则</div></div>
                   </div>
                 </div>`;
               }).join('')}
@@ -157,7 +161,7 @@ window.CP = window.CP || {};
             </button>
             <button class="btn btn-ghost btn-lg" data-act="go-profile" style="justify-content:flex-start">
               ${ui().icon('user', 16)} ${portrait ? '更新用户画像' : '创建用户画像'}
-              <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">5 步问答</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">${M().PORTRAIT_QUESTIONS.length} 个关键问题</span>
             </button>
             <button class="btn btn-ghost btn-lg" data-act="go-accounts" style="justify-content:flex-start">
               ${ui().icon('key', 16)} 平台账号登录
@@ -197,7 +201,6 @@ window.CP = window.CP || {};
     /* 事件：多个同名按钮需全部绑定 */
     bindAll(root, '[data-act="import"]', () => CP.importArticle());
     bindAll(root, '[data-act="go-distribute"]', () => location.hash = '#/distribute');
-    bindAll(root, '[data-act="go-audience"]', () => location.hash = '#/audience');
     bindAll(root, '[data-act="go-profile"]', () => location.hash = '#/profile');
     bindAll(root, '[data-act="go-library"]', () => location.hash = '#/library');
     bindAll(root, '[data-act="go-history"]', () => location.hash = '#/history');
@@ -205,11 +208,11 @@ window.CP = window.CP || {};
     root.querySelectorAll('[data-step]').forEach(el => {
       el.addEventListener('click', () => {
         const k = el.dataset.step;
-        location.hash = k === 'profile' ? '#/profile' : k === 'sniff' ? '#/audience' : k === 'rewrite' ? '#/distribute' : '#/history';
+        location.hash = k === 'profile' ? '#/profile' : k === 'accounts' ? '#/accounts' : k === 'rewrite' ? '#/distribute' : '#/history';
       });
     });
     root.querySelectorAll('[data-plat]').forEach(el => {
-      el.addEventListener('click', () => { location.hash = '#/audience'; });
+      el.addEventListener('click', () => { location.hash = '#/accounts'; });
     });
     root.querySelectorAll('[data-act="open-article"]').forEach(el => {
       el.addEventListener('click', () => {
@@ -262,13 +265,5 @@ window.CP = window.CP || {};
     let acc = 0;
     const points = times.map(t => { acc += byTime[t]; return acc; });
     return { points, labels: times, total: acc };
-  }
-
-  /* 画像强度：由平台画像雷达确定性推导（不是平台真实热度） */
-  function heatOf(pid) {
-    const p = M().PLATFORMS.find(x => x.id === pid);
-    if (!p || !p.radar) return 70;
-    const r = p.radar;
-    return Math.round(r.info * 0.3 + r.depth * 0.3 + r.interaction * 0.2 + r.tone * 0.2);
   }
 })();

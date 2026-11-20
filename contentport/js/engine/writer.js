@@ -130,8 +130,7 @@
 
   /* ---------------- 钩子 ---------------- */
   function hookText(analysis, plan, platform, level) {
-    const name = (platform.audience && platform.audience.role) || '';
-    const role = /职场|白领|管理/.test(name) ? '职场人' : (/学生|研究生/.test(name) ? '学生党' : (/开发|工程|技术/.test(name) ? '开发者' : '读者'));
+    const role = (plan.portrait && plan.portrait.readerLabels && plan.portrait.readerLabels[0]) || '读者';
     const thesis = compact(analysis.thesis, level, platform.id === 'xhs' ? 46 : 90);
     switch (plan.hookId) {
       case 'result':

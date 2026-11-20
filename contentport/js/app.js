@@ -14,7 +14,6 @@ window.CP = window.CP || {};
     { key: 'dashboard', label: '工作台', icon: 'dashboard', crumb: '总览与快捷入口' },
     { key: 'profile', label: '用户画像', icon: 'user', crumb: '问答式自画像' },
     { key: 'library', label: '文章库', icon: 'book', crumb: '内容资产管理' },
-    { key: 'audience', label: '受众嗅探', icon: 'radar', crumb: '平台受众分析' },
     { key: 'distribute', label: '分发工作台', icon: 'send', crumb: '自适应改写与发布' },
     { key: 'accounts', label: '账号中心', icon: 'key', crumb: '平台账号登录与绑定' },
     { key: 'history', label: '发布记录', icon: 'clock', crumb: '发布历史与数据' }
@@ -24,7 +23,8 @@ window.CP = window.CP || {};
   function renderShell() {
     const app = document.getElementById('app');
     const userName = S().portrait ? S().portrait.nickname || '创作者' : '未创建画像';
-    const userSub = S().portrait ? (S().portrait.domainLabels || ['内容创作者']).join(' · ') : '点击创建你的自画像';
+    const doms = (S().portrait && S().portrait.domainLabels) || [];
+    const userSub = S().portrait ? (doms.length ? doms.join(' · ') : '内容创作者') : '点击创建你的自画像';
 
     app.innerHTML = `
       <div class="app-shell">
@@ -60,8 +60,8 @@ window.CP = window.CP || {};
               <div class="topbar-crumb" id="tb-crumb">总览与快捷入口</div>
             </div>
             <div class="topbar-right">
-              <span class="badge" id="sniff-badge" style="cursor:pointer" data-act="goto-audience">
-                ${S().sniffDone ? ui().icon('checkCircle', 13) + ' 画像已生成' : ui().icon('radar', 13) + ' 未生成画像'}
+              <span class="badge" id="account-badge" style="cursor:pointer" data-act="goto-accounts">
+                ${linkedPlatforms()}/${M().PLATFORMS.length} 已登录
               </span>
               <button class="btn btn-primary btn-sm" data-act="goto-distribute">${ui().icon('send', 14)} 去分发</button>
             </div>
@@ -75,7 +75,7 @@ window.CP = window.CP || {};
   function bindShell() {
     const app = document.getElementById('app');
     app.querySelector('[data-act="settings"]').addEventListener('click', openSettings);
-    app.querySelector('[data-act="goto-audience"]').addEventListener('click', () => location.hash = '#/audience');
+    app.querySelector('[data-act="goto-accounts"]').addEventListener('click', () => location.hash = '#/accounts');
     app.querySelector('[data-act="goto-distribute"]').addEventListener('click', () => location.hash = '#/distribute');
   }
 
@@ -107,13 +107,17 @@ window.CP = window.CP || {};
     window.scrollTo({ top: 0 });
   }
 
-  /* ---------- 嗅探状态徽章 ---------- */
-  CP.updateSniffBadge = function () {
-    const b = document.querySelector('#sniff-badge');
+  /* ---------- 顶栏账号状态徽章 ---------- */
+  function linkedPlatforms() {
+    const accounts = (S().settings && S().settings.accounts) || {};
+    return M().PLATFORMS.filter(p => accounts[p.id] && accounts[p.id].linked).length;
+  }
+
+  CP.updateAccountBadge = function () {
+    const b = document.querySelector('#account-badge');
     if (!b) return;
-    b.innerHTML = S().sniffDone
-      ? ui().icon('checkCircle', 13) + ' 画像已生成'
-      : ui().icon('radar', 13) + ' 未生成画像';
+    const linked = linkedPlatforms();
+    b.innerHTML = (linked ? ui().icon('checkCircle', 13) : ui().icon('key', 13)) + ` ${linked}/${M().PLATFORMS.length} 已登录`;
   };
 
   /* ---------- 本地存储占用（图片以 base64 存在 localStorage，容易接近上限） ---------- */
@@ -203,6 +207,13 @@ window.CP = window.CP || {};
         <div class="hint" style="margin-top:6px">当前版本 v${ui().esc(window.electronAPI.appVersion || '')}。发现新版本会在后台自动下载，重启后生效。</div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" id="set-check-update">${ui().icon('refresh', 13)} 检查更新</button>
+        </div>
+        <div class="divider"></div>
+        <div class="label" style="display:flex;align-items:center;gap:7px">${ui().icon('fileText', 14)} 诊断日志</div>
+        <div class="hint" style="margin-top:6px">启动失败、发布报错等只写入本机日志，不上传；日志不含文章正文、AI Key 或平台凭据。遇到问题时导出日志便于排查。</div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="set-export-log">${ui().icon('download', 13)} 导出诊断日志</button>
+          <button class="btn btn-ghost btn-sm" id="set-open-log">${ui().icon('fileText', 13)} 打开日志目录</button>
         </div>` : ''}
       </div>
       <div class="modal-foot">
@@ -344,6 +355,28 @@ window.CP = window.CP || {};
       });
     }
 
+    const exportLogBtn = modal.querySelector('#set-export-log');
+    if (exportLogBtn) {
+      exportLogBtn.addEventListener('click', async () => {
+        exportLogBtn.disabled = true;
+        const res = await window.electronAPI.exportDiagnostics();
+        exportLogBtn.disabled = false;
+        if (!res || res.ok === false) {
+          if (!(res && res.canceled)) ui().toast((res && res.msg) || '导出失败', 'warn');
+          return;
+        }
+        ui().toast('诊断日志已导出', 'ok');
+      });
+    }
+
+    const openLogBtn = modal.querySelector('#set-open-log');
+    if (openLogBtn) {
+      openLogBtn.addEventListener('click', async () => {
+        const res = await window.electronAPI.openLogFolder();
+        if (!res || res.ok === false) ui().toast((res && res.msg) || '无法打开日志目录', 'warn');
+      });
+    }
+
     function collectAutoPull() {
       return {
         enabled: !!modal.querySelector('#ap-enabled').checked,
@@ -428,7 +461,7 @@ window.CP = window.CP || {};
     const content = document.getElementById('content');
     const pageFn = CP.getPage(currentRoute());
     if (pageFn && content) pageFn(content, { key: currentRoute() });
-    CP.updateSniffBadge();
+    CP.updateAccountBadge();
     restartAutoPull();
   };
 
@@ -500,6 +533,22 @@ window.CP = window.CP || {};
       e.getUpdateStatus().then(render).catch(() => { /* ignore */ });
     }
   }
+
+  /* ---------- 渲染进程错误 → 本机日志（不上传） ---------- */
+  function reportRendererError(scope, message) {
+    try {
+      if (window.electronAPI && typeof window.electronAPI.logError === 'function') {
+        window.electronAPI.logError({ level: 'error', scope, message: String(message || '').slice(0, 2000) });
+      }
+    } catch (_) { /* 日志失败不影响界面 */ }
+  }
+  window.addEventListener('error', (e) => {
+    reportRendererError('renderer:error', `${e.message || '脚本错误'} @ ${e.filename || ''}:${e.lineno || 0}:${e.colno || 0}`);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e.reason;
+    reportRendererError('renderer:unhandledrejection', (r && (r.stack || r.message)) || String(r || '未知错误'));
+  });
 
   /* ---------- 初始化 ---------- */
   async function init() {

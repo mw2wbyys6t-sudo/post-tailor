@@ -12,6 +12,19 @@ window.CP = window.CP || {};
   const M = () => CP.mock;
   const S = () => CP.state;
 
+  /* 仅写本机诊断日志，不上传；失败时静默，不影响业务 */
+  function logLocal(scope, err) {
+    try {
+      if (window.electronAPI && typeof window.electronAPI.logError === 'function') {
+        window.electronAPI.logError({
+          level: 'error',
+          scope,
+          message: (err && (err.stack || err.message)) || String(err || '未知错误')
+        });
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   /* 已接入真实发布通道的平台：
      csdn / wechat / zhihu 走官方或网页内部 API 自动发布；
      xhs 走浏览器辅助发布（打开官方发布页，自动填入标题 + 正文入剪贴板） */
@@ -282,44 +295,6 @@ window.CP = window.CP || {};
     },
 
     /* --------------------------------------------------------
-       POST /api/sniff  —— 生成平台受众画像基线
-       body: { platformIds: string[] }
-       说明：本应用不抓取平台实时数据。这里输出的是内置平台画像
-       基线（受众、语气、结构偏好），数值由画像雷达确定性推导，
-       不掺随机数，也不宣称是实时快照。
-       -------------------------------------------------------- */
-    async runSniff(platformIds) {
-      await delay(1400);
-      const platforms = M().PLATFORMS.filter(p => platformIds.includes(p.id));
-      const BEST_TIME = {
-        csdn: ['9-11 点', '14-17 点'],
-        wechat: ['7-9 点', '20-22 点'],
-        xhs: ['12-14 点', '19-23 点'],
-        zhihu: ['21-23 点', '周末上午']
-      };
-      const reports = platforms.map(p => {
-        const r = p.radar;
-        return {
-          platformId: p.id,
-          basis: '内置画像基线',
-          snapshot: {
-            // 用于排序参考的画像强度，由雷达维度加权得出（非平台真实热度）
-            heatIndex: Math.round(r.info * 0.3 + r.depth * 0.3 + r.interaction * 0.2 + r.tone * 0.2),
-            deepIndex: r.depth,
-            activeTime: BEST_TIME[p.id] || ['20-22 点'],
-            updatedAt: new Date().toLocaleDateString('zh-CN')
-          },
-          audience: p.audience,
-          trending: p.trending,
-          styleRules: p.styleRules,
-          radar: r
-        };
-      });
-      CP.actions.markSniffDone();
-      return { code: 0, data: reports };
-    },
-
-    /* --------------------------------------------------------
        POST /api/rewrite  —— 平台自适应改写
        body: { articleId, platformIds }
        走 engine/pipeline：内容分析 → 平台规划 →（AI 计划/成稿/
@@ -381,7 +356,7 @@ window.CP = window.CP || {};
           },
           {
             role: 'user',
-            content: `【平台】${plat.name}（受众：${plat.audience.role}，语气偏好：${plat.audience.tone}）\n【当前标题】${prev.title}\n【当前正文】\n${cleanBody}`
+            content: `【平台】${plat.name}（语气：${plat.tone}；标题规则：${plat.titleRule}；篇幅：${plat.lengthRule}；风格：${plat.styleRules.join('；')}）\n【当前标题】${prev.title}\n【当前正文】\n${cleanBody}`
           }
         ], { json: true, temperature: 0.6, maxTokens: 5000 });
         parsed = parseJsonLoose(content);
@@ -507,7 +482,7 @@ window.CP = window.CP || {};
          wechat → { appid, secret }
          zhihu / xhs → { cookie }（扫码登录捕获）
        Electron：走主进程平台通道（CSDN MetaWeblog / 微信 API / 知乎·小红书 Cookie）
-       浏览器：返回模拟结果（演示）
+       浏览器预览：不做假校验，直接提示需桌面版
        -------------------------------------------------------- */
     async loginAccount(platformId, { method, nickname, credential, cookie } = {}) {
       await delay(400);
@@ -641,6 +616,7 @@ window.CP = window.CP || {};
         } catch (e) {
           rec.status = '失败';
           rec.failReason = e.message || '发布失败';
+          logLocal('publish:' + platformId, e);
           commit(rec);
           return { code: 1, msg: e.message || '发布失败', data: { rec, mode: 'auto', platformName: platform.name } };
         }
@@ -675,6 +651,7 @@ window.CP = window.CP || {};
         const stats = await electron.fetchStats({ platformId, postId });
         return { code: 0, data: stats };
       } catch (e) {
+        logLocal('stats:' + platformId, e);
         return { code: 1, msg: e.message || '数据回拉失败' };
       }
     },

@@ -110,7 +110,7 @@
     }
   }
 
-  function chooseHook(analysis, matrix) {
+  function chooseHook(analysis, matrix, portrait) {
     const available = {
       conclusion: !!analysis.thesis,
       result: !!analysis.resultSentence,
@@ -121,7 +121,14 @@
       identity: true,
       timeline: !!analysis.timelineSentence
     };
-    for (const id of matrix.hookCandidates) {
+    /* 表达风格影响本地成稿的开头选择（AI 模式另有更完整的措辞约束） */
+    const voice = (portrait && portrait.voice) || '';
+    const preferred = voice === 'sharp' ? ['conclusion', 'contrarian']
+      : voice === 'story' ? ['pain', 'timeline']
+      : voice === 'warm' ? ['pain', 'identity']
+      : voice === 'rigorous' ? ['conclusion', 'numbered'] : [];
+    const order = preferred.concat(matrix.hookCandidates.filter(id => preferred.indexOf(id) < 0));
+    for (const id of order) {
       if (available[id]) return id;
     }
     return 'conclusion';
@@ -149,7 +156,7 @@
     const S = strategies();
     const platform = S.getPlatform(platformId);
     const matrix = S.getMatrix(analysis.contentType, platformId);
-    const hookId = chooseHook(analysis, matrix);
+    const hookId = chooseHook(analysis, matrix, portrait);
     const { ctx, candidates, best } = chooseTitle(analysis, platform, matrix);
 
     const srcLen = Math.max(120, analysis.charCount);
@@ -177,10 +184,40 @@
     if (matrix.roles.indexOf('data') >= 0 && analysis.numbers.length === 0) risks.push('原文没有量化数据，结论说服力有限');
     if (hookId === 'result' && !analysis.resultSentence) risks.push('缺少结果型句子，已回退到结论钩子');
 
+    /* 用户画像 → 可执行约束（只使用用户自己的问答，不引入平台统计） */
+    const p = portrait || {};
+    const pref = [];
+    if (p.identityLabel) pref.push(`身份：${p.identityLabel}`);
+    if (p.expertiseLabel) pref.push(`专业程度：${p.expertiseLabel}`);
+    if (p.voiceLabel) pref.push(`表达风格：${p.voiceLabel}`);
+    if (p.readerLabels && p.readerLabels.length) pref.push(`目标读者：${p.readerLabels.join('、')}`);
+    if (p.avoidLabels && p.avoidLabels.length) pref.push(`避免表达：${p.avoidLabels.join('、')}`);
+
+    const constraints = [];
+    const readers = p.readers || [];
+    const avoid = p.avoid || [];
+    if (readers.some(r => r === 'beginner' || r === 'broad')) constraints.push('降低术语密度，增加类比与案例');
+    if (readers.indexOf('expert') >= 0) constraints.push('保留专业细节与推导过程');
+    if (readers.indexOf('decision') >= 0) constraints.push('结论与决策清单前置');
+    if (p.expertise === 'entry') constraints.push('步骤清晰、可复现，补齐必要背景');
+    if (p.expertise === 'expert') constraints.push('保留判断、边界与取舍，不写基础科普');
+    if (p.voice === 'warm') constraints.push('口语化、第二人称，降低阅读门槛');
+    if (p.voice === 'sharp') constraints.push('观点前置，句子短，少铺垫');
+    if (p.voice === 'story') constraints.push('用场景或经历开场');
+    if (p.voice === 'rigorous') constraints.push('术语准确、论证完整，减少口语化');
+    if (avoid.indexOf('slang') >= 0) constraints.push('不使用网络热词');
+    if (avoid.indexOf('clickbait') >= 0) constraints.push('不使用夸张标题党');
+    if (avoid.indexOf('jargon') >= 0) constraints.push('控制术语数量，必要时先解释');
+    if (avoid.indexOf('marketing') >= 0) constraints.push('避免强营销话术与夸张承诺');
+    if (avoid.indexOf('emoji') >= 0) {
+      constraints.push('尽量少用表情符号');
+      if (platformId === 'xhs') risks.push('你选择了避免表情符号，但小红书的平台结构规则通常需要 emoji，成稿会尽量少用并在质检中体现');
+    }
+
     const tags = S.buildTagList(analysis, platform);
 
     const brief = [
-      `【平台】${platform.name}（${platform.audience.tone}；受众：${platform.audience.role}）`,
+      `【平台】${platform.name}（语气：${platform.tone}；标题：${platform.titleRule}；长度：${platform.lengthRule}）`,
       `【内容类型】${analysis.contentTypeLabel}`,
       `【钩子】${S.HOOKS[hookId] ? S.HOOKS[hookId].label : hookId}`,
       `【结构】${sections.map(s => s.label).join(' → ')}`,
@@ -188,7 +225,8 @@
       `【标题公式】${best.id} ${best.title}`,
       `【必须保留】${mustKeep.join(' / ') || '无'}`,
       `【可量化证据】${analysis.numbers.map(n => n.raw).join('、') || '无'}`,
-      `【用户画像】${JSON.stringify(portrait || {})}`,
+      pref.length ? `【创作者偏好】${pref.join('；')}` : '',
+      constraints.length ? `【写作约束】${constraints.join('；')}` : '',
       risks.length ? `【风险】${risks.join('；')}` : ''
     ].filter(Boolean).join('\n');
 
@@ -216,6 +254,9 @@
       tags,
       risks,
       brief,
+      portrait: p,
+      portraitPref: pref,
+      portraitConstraints: constraints,
       platform
     };
   }

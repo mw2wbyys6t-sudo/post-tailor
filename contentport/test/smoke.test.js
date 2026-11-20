@@ -25,6 +25,32 @@ test('pipeline: 四平台均生成完整改写稿并通过基础质检', async (
   }
 });
 
+test('planner: 用户画像被转换成可执行的写作约束', () => {
+  const analysis = require(path.join(ROOT, 'js/engine/analysis.js'));
+  const planner = require(path.join(ROOT, 'js/engine/planner.js'));
+  const a = analysis.analyze({
+    id: caseRag.id, title: caseRag.title, body: caseRag.body, category: caseRag.category
+  });
+  const portrait = {
+    identityLabel: '技术人',
+    expertise: 'expert',
+    expertiseLabel: '资深从业者',
+    voice: 'sharp',
+    voiceLabel: '犀利直接',
+    readers: ['expert'],
+    readerLabels: ['资深同行'],
+    avoid: ['emoji', 'slang'],
+    avoidLabels: ['表情符号', '网络热词']
+  };
+  const plan = planner.buildPlan(a, 'xhs', portrait);
+  assert.ok(plan.brief.includes('【创作者偏好】'), '缺少创作者偏好');
+  assert.ok(plan.brief.includes('【写作约束】'), '缺少写作约束');
+  assert.ok(plan.brief.includes('不使用网络热词'), '未应用“避免网络热词”');
+  assert.ok(plan.brief.includes('观点前置'), '未应用“犀利直接”风格');
+  assert.strictEqual(plan.hookId, 'conclusion', '犀利风格未让开头结论前置');
+  assert.ok(plan.risks.some(r => r.includes('表情符号')), '未提示 emoji 与小红书规则的冲突');
+});
+
 test('markdown: 用户内容中的 HTML 被转义', () => {
   global.window = global;
   global.CP = global.CP || {};

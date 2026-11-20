@@ -1,6 +1,6 @@
 /* =========================================================
    OmniDraft · 分发工作台（distribute.js）
-   选文章 → 选平台 → 受众自适应改写 → 对照预览 → 发布/复制
+   选文章 → 选平台 → 按平台规则改写 → 对照预览 → 发布/复制
    ========================================================= */
 window.CP = window.CP || {};
 
@@ -105,7 +105,7 @@ window.CP = window.CP || {};
         <div class="rewrite-loading">
           <div class="rl-spin"></div>
           <div class="rl-t">正在为 ${sel.length} 个平台生成改写稿…</div>
-          <div class="rl-d">依据受众画像调整标题 / 开头 / 结构 / 语气</div>
+          <div class="rl-d">依据平台写作规则调整标题 / 开头 / 结构 / 语气</div>
         </div>`;
       return;
     }
@@ -119,7 +119,7 @@ window.CP = window.CP || {};
       right.innerHTML = `<div class="empty" style="padding:90px 20px">
         <div class="empty-ic">${ui().icon('sparkles', 26)}</div>
         <h4>等待智能改写</h4>
-        <p>点击「智能改写」，系统将基于平台受众画像，为每个平台生成独立的标题、结构与语气版本。</p>
+        <p>点击「智能改写」，系统将基于各平台的写作规则（语气、标题、结构、篇幅），为每个平台生成独立的标题、结构与语气版本。</p>
       </div>`;
       return;
     }

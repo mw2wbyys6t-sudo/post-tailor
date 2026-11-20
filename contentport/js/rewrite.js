@@ -1,7 +1,7 @@
 /* =========================================================
    OmniDraft · 自适应改写引擎（rewrite.js）
    输入：文章 + 目标平台 → 输出：平台原生改写稿
-   逻辑：根据平台受众画像（mock 数据）重写标题/开头/结构/语气
+   逻辑：根据平台写作规则（mock 数据）重写标题/开头/结构/语气
    接入真实 AI 后，此函数由 API 层的大模型调用替代
    ========================================================= */
 window.CP = window.CP || {};
@@ -98,31 +98,31 @@ window.CP = window.CP || {};
         dim: '标题',
         from: orig,
         to: genTitle(article, pid),
-        reason: `${plat.name}受众偏好「${pid === 'xhs' ? '痛点+情绪词，点击率提升约 40%' : pid === 'wechat' ? '价值感+悬念，打开率提升约 35%' : pid === 'zhihu' ? '观点前置引发思考' : '关键词前置便于搜索命中'}」`
+        reason: `${plat.name}标题规则：${plat.titleRule}`
       },
       {
         dim: '开头',
         from: firstSentence(article.body).slice(0, 40) + '…',
         to: genOpening(article, pid).slice(0, 60),
-        reason: `该平台用户${pid === 'xhs' ? ' 3 秒内决定是否继续阅读' : pid === 'wechat' ? '习惯先看故事再判断价值' : pid === 'zhihu' ? '期待先看到结论而非铺垫' : '习惯先看结论再决定是否深入'}`
+        reason: `${plat.name}开篇规则：${plat.styleRules[0]}`
       },
       {
         dim: '结构',
         from: '原始章节顺序：背景 → 方案 → 实践',
         to: pid === 'xhs' ? '清单化短句 + 表情符号分段' : pid === 'csdn' ? '结论 → 要点 → 细节 → 数据' : pid === 'wechat' ? '故事 → 干货 → 金句收尾' : '结论 → 论证分点 → 数据引用',
-        reason: `匹配 ${plat.name} 的阅读习惯（${plat.audience.habits[0]}）`
+        reason: `按 ${plat.name} 结构规则重组：${plat.styleRules.join('；')}`
       },
       {
         dim: '语气',
         from: '中性叙述',
-        to: pid === 'xhs' ? '口语化、亲切、有画面感' : pid === 'wechat' ? '专业且带温度' : pid === 'zhihu' ? '严谨理性、观点鲜明' : '专业务实、直给',
-        reason: `${plat.name} 主流受众为「${plat.audience.role}」，偏好「${plat.audience.tone}」`
+        to: plat.tone,
+        reason: `${plat.name}语气要求：${plat.tone}`
       },
       {
         dim: '字数',
         from: article.wordCount + ' 字',
-        to: pid === 'xhs' ? '压缩至 600-1200 字（约 ' + Math.round(article.wordCount * 0.45) + ' 字）' : pid === 'csdn' ? '保持 1200-3000 字' : pid === 'wechat' ? '扩展至 2000-4000 字' : '扩展至 3000-8000 字',
-        reason: `符合 ${plat.name} 的字数偏好（${plat.audience.wordPref}）`
+        to: pid === 'xhs' ? '压缩至 ' + plat.lengthRule : plat.lengthRule,
+        reason: `${plat.name}篇幅规则：${plat.lengthRule}`
       }
     ];
     return changes;
@@ -200,12 +200,17 @@ ${closing}`;
     }
   }
 
-  /* 适配度评分：由平台 radar + 文章匹配度合成（确定性，不加随机抖动） */
+  /* 适配度评分：由标题/结构/篇幅的规则满足度合成（确定性，不加随机抖动） */
   function genScore(article, pid) {
     const plat = M().PLATFORMS.find(p => p.id === pid);
-    const base = Math.round((plat.radar.info + plat.radar.depth) / 2);
-    const bonus = article.status === '已发布' ? 4 : 0;
-    return Math.min(97, base - 6 + bonus);
+    const title = genTitle(article, pid);
+    let score = 72;
+    if (title && title.length >= 8) score += 4;
+    if (title && title.length <= 30) score += 4;
+    if (article.body && article.body.length >= 300) score += 4;
+    if (article.keyword || article.category) score += 3;
+    if (plat && plat.styleRules && plat.styleRules.length >= 3) score += 2;
+    return Math.min(97, score);
   }
 
   function genRewrite(article, pid) {
@@ -219,8 +224,8 @@ ${closing}`;
       body: genBody(article, pid),
       changes: genChanges(article, pid),
       score: genScore(article, pid),
-      keywords: [article.keyword || article.category, ...plat.trending.slice(0, 2)],
-      fitted: plat.audience.habits[0]
+      keywords: [article.keyword || article.category].filter(Boolean),
+      fitted: (plat.styleRules && plat.styleRules[0]) || '按平台结构规则改写'
     };
   }
 

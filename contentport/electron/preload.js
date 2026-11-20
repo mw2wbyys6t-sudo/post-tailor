@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update:status', handler);
     return () => ipcRenderer.removeListener('update:status', handler);
   },
+  // 本地诊断日志（只写本机，不上传）
+  logError: (payload) => ipcRenderer.invoke('diag:append', payload),
+  exportDiagnostics: () => ipcRenderer.invoke('diag:export'),
+  openLogFolder: () => ipcRenderer.invoke('diag:open-folder'),
   // 环境信息
   isElectron: true,
   appVersion: ipcRenderer.sendSync('app:version'),

@@ -324,8 +324,7 @@
     const user = [
       '【平台策略】',
       JSON.stringify({
-        name: platform.name, tone: platform.audience.tone, role: platform.audience.role,
-        habits: platform.audience.habits, length: plan.length, titles: platform.title,
+        name: platform.name, tone: platform.tone, length: plan.length, titles: platform.title,
         styleRules: platform.styleRules, cta: platform.cta, taboo: (platform.taboo || []).map(t => t.msg)
       }, null, 2),
       '【文章分析】',
@@ -358,7 +357,7 @@
     ].join('\n');
     const user = [
       plan.brief,
-      '【直接受众与语气】' + JSON.stringify({ role: platform.audience.role, tone: platform.audience.tone, habits: platform.audience.habits }),
+      '【平台语气与规则】' + JSON.stringify({ tone: platform.tone, styleRules: platform.styleRules }),
       '【必须保留的原文要点】',
       plan.mustKeep.map(k => '- ' + k).join('\n'),
       '【必须保留的数字】',
@@ -435,11 +434,11 @@
     const firstOrig = analysis.sentences[0] ? analysis.sentences[0].text : analysis.thesis;
     const firstNew = String(draft.body || '').split('\n').find(l => l.trim() && !/^#{1,6}\s/.test(l)) || '';
     return [
-      { dim: '标题', from: analysis.title, to: draft.title, reason: `${platform.name}偏好「${platform.audience.titleLen}」，使用「${plan.angle}」切入` },
-      { dim: '开头', from: firstOrig.slice(0, 40) + (firstOrig.length > 40 ? '…' : ''), to: firstNew.slice(0, 60), reason: `匹配${platform.name}受众习惯：${platform.audience.habits[0]}` },
+      { dim: '标题', from: analysis.title, to: draft.title, reason: `${platform.name}标题规则「${platform.titleRule}」，使用「${plan.angle}」切入` },
+      { dim: '开头', from: firstOrig.slice(0, 40) + (firstOrig.length > 40 ? '…' : ''), to: firstNew.slice(0, 60), reason: `遵循${platform.name}结构规则：${platform.styleRules[0] || '结论先行、分段展开'}` },
       { dim: '结构', from: '原文结构：' + (analysis.sectionTopics.join(' → ') || '无小标题'), to: plan.structureRoles.map(r => labels[r] || r).join(' → '), reason: `按${platform.name}推荐结构重组内容` },
-      { dim: '语气', from: '原文语气', to: platform.audience.tone, reason: `目标受众「${platform.audience.role}」偏好${platform.audience.tone}` },
-      { dim: '字数', from: analysis.charCount + ' 字', to: textLength(draft.body) + ' 字（目标 ' + plan.length.min + '-' + plan.length.max + '）', reason: `平台字数偏好 ${platform.audience.wordPref || plan.length.min + '-' + plan.length.max + ' 字'}` }
+      { dim: '语气', from: '原文语气', to: platform.tone, reason: `按${platform.name}语气规则：${platform.tone}` },
+      { dim: '字数', from: analysis.charCount + ' 字', to: textLength(draft.body) + ' 字（目标 ' + plan.length.min + '-' + plan.length.max + '）', reason: `平台字数规则 ${platform.lengthRule || plan.length.min + '-' + plan.length.max + ' 字'}` }
     ];
   }
 
@@ -454,7 +453,7 @@
       changes: buildChanges(analysis, plan, draft, platform),
       score: qa.total,
       keywords: plan.tags,
-      fitted: platform.audience.habits[0],
+      fitted: (platform.styleRules && platform.styleRules[0]) || '按平台结构规则改写',
       quality: qa,
       algorithm: {
         engineVersion: ENGINE_VERSION,

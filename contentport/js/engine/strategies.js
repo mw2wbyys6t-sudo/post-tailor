@@ -2,7 +2,7 @@
    OmniDraft · 平台策略库（engine/strategies.js）
    把「爆款」拆成可编码规则：标题公式 / 钩子原型 / 结构模板 /
    长度预算 / 排版规则 / CTA / 标签策略 / 平台禁忌 / 质检权重
-   平台受众数据优先继承 js/mock.js 的 PLATFORMS，缺失时用内置兜底
+   平台写作规则优先继承 js/mock.js 的 PLATFORMS，缺失时用内置兜底
    ========================================================= */
 (function (root, factory) {
   const api = factory();
@@ -164,26 +164,22 @@
   const FALLBACK_PLATFORMS = {
     csdn: {
       name: 'CSDN', color: '#FC5531', tagline: '技术社区',
-      audience: { role: '开发者、工程师、技术管理者', tone: '专业务实，直给结论', habits: ['速览式阅读', '搜索解决方案', '收藏代码片段'] },
-      trending: ['AI 大模型', '微服务架构', '云原生', '数据库优化', '前端框架', '低代码'],
+      tone: '专业务实，直给结论', titleRule: '≤30 字，技术关键词前置', lengthRule: '1200-3000 字',
       styleRules: ['开头先给结论', '代码块 + 注释', '实战要点清单', '少比喻多对比']
     },
     wechat: {
       name: '微信公众号', color: '#07C160', tagline: '深度阅读',
-      audience: { role: '职场白领、中高层、内容从业者', tone: '专业但亲切，有温度', habits: ['睡前/通勤阅读', '关注深度分析', '收藏转发金句'] },
-      trending: ['职场成长', '行业洞察', '效率工具', '认知升级', '个人IP'],
+      tone: '专业但亲切，有温度', titleRule: '16-25 字，情绪 + 价值感', lengthRule: '2000-4000 字',
       styleRules: ['场景故事开场', '小标题 + 加粗金句', '结尾行动清单']
     },
     xhs: {
       name: '小红书', color: '#FF2442', tagline: '种草笔记',
-      audience: { role: '学生、年轻职场人、生活方式爱好者', tone: '口语化、亲切、有画面感', habits: ['碎片化刷屏', '封面党', '清单式阅读'] },
-      trending: ['干货清单', '学习方法', '好物分享', '自律打卡', '职场避坑', '效率神器'],
+      tone: '口语化、亲切、有画面感', titleRule: '≤20 字 + emoji，痛点/好奇前置', lengthRule: '600-1200 字',
       styleRules: ['标题带 emoji 与数字钩子', '短句分段', '清单体', '引导评论']
     },
     zhihu: {
       name: '知乎', color: '#0066FF', tagline: '理性问答',
-      audience: { role: '高学历白领、研究生、行业从业者', tone: '严谨理性，观点鲜明', habits: ['搜索问题', '深度长文', '看重论证'] },
-      trending: ['认知方法论', '职业发展', '技术深潜', '社会议题', '读书思考'],
+      tone: '严谨理性，观点鲜明', titleRule: '问题式/观点式，引发思考', lengthRule: '3000-8000 字',
       styleRules: ['开头先抛观点', '论证分点', '标注来源', '避免营销腔']
     }
   };
@@ -267,8 +263,9 @@
       name: mock.name,
       color: mock.color,
       tagline: mock.tagline,
-      audience: mock.audience,
-      trending: mock.trending || [],
+      tone: mock.tone || '',
+      titleRule: mock.titleRule || '',
+      lengthRule: mock.lengthRule || '',
       styleRules: mock.styleRules || []
     };
   }
@@ -324,23 +321,14 @@
     return short(t, 14) || '这件事';
   }
 
-  function roleShort(platform) {
-    const role = String(platform.audience.role || '');
-    if (/职场|白领|管理/.test(role)) return '职场人';
-    if (/学生|研究生/.test(role)) return '学生党';
-    if (/开发|工程|技术/.test(role)) return '开发者';
+  function roleShort() {
     return '读者';
   }
 
   function titleContext(analysis, platform) {
-    const text = (analysis.title + ' ' + analysis.bodyText).toLowerCase();
     let kw = cleanKw(analysis.title);
     if (!kw || kw === '这件事') {
-      kw = '';
-      for (const t of platform.trending) {
-        if (text.indexOf(String(t).toLowerCase()) >= 0) { kw = t; break; }
-      }
-      if (!kw) kw = cleanKw((analysis.keywords[0] && analysis.keywords[0].term) || analysis.category || '这件事');
+      kw = cleanKw((analysis.keywords[0] && analysis.keywords[0].term) || analysis.category || '这件事');
     }
     const resultNoun = {
       tutorial: '关键步骤', experience: '实战经验', opinion: '核心判断',
@@ -362,7 +350,7 @@
       kw: cleanKw(kw),
       n: Math.max(3, Math.min(7, analysis.keyPoints.length || 3)),
       result: resultNoun,
-      group: roleShort(platform),
+      group: roleShort(),
       thesisShort: short(analysis.thesis, 16),
       pain: short(analysis.painSentence, 14),
       year: yearMatch ? yearMatch[0] : '',
@@ -410,8 +398,6 @@
   }
 
   function buildTagList(analysis, platform) {
-    const text = (analysis.title + ' ' + analysis.bodyText).toLowerCase();
-    const hits = platform.trending.filter(t => text.indexOf(String(t).toLowerCase()) >= 0);
     const BAD = /(一次|搭建|背景|痛点|复盘|记录|总结|完整|实战|方法|要点|指南|我们|我|如何|为什么|可以|需要)/;
     const cleaned = analysis.keywords
       .map(k => k.term)
@@ -421,7 +407,6 @@
     const push = (t) => {
       if (t && out.indexOf(t) < 0) out.push(t);
     };
-    hits.forEach(push);
     if (titleKw && titleKw !== '这件事') push(titleKw);
     cleaned.forEach(push);
     analysis.keywords.forEach(k => push(k.term));
