@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/mw2wbyys6t-sudo/post-tailor/releases/latest"><img src="https://img.shields.io/github/v/release/mw2wbyys6t-sudo/post-tailor?color=E8A33D&label=release" alt="Release"></a>
+  <a href="https://github.com/mw2wbyys6t-sudo/post-tailor/actions/workflows/ci.yml"><img src="https://github.com/mw2wbyys6t-sudo/post-tailor/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/mw2wbyys6t-sudo/post-tailor?color=4F8A7B" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-3B7EA1" alt="Platform">
   <img src="https://img.shields.io/badge/Electron-45-47848F" alt="Electron 45">
