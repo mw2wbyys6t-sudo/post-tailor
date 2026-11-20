@@ -85,16 +85,34 @@ window.CP = window.CP || {};
     wrap.className = 'modal-wrap';
     wrap.innerHTML = `
       <div class="modal-mask" data-close></div>
-      <div class="modal" style="max-width:${width}px">
+      <div class="modal" role="dialog" aria-modal="true" style="max-width:${width}px">
         <button class="modal-x" data-close aria-label="关闭">${icon('x', 18)}</button>
         ${html}
       </div>`;
     root.appendChild(wrap);
-    requestAnimationFrame(() => wrap.classList.add('show'));
+    let closed = false;
     const close = () => {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener('keydown', onKey, true);
       wrap.classList.remove('show');
       setTimeout(() => { wrap.remove(); if (onClose) onClose(); }, 220);
     };
+    // Esc 关闭最上层弹窗，键盘用户不必只能用鼠标
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      const wraps = root.querySelectorAll('.modal-wrap');
+      if (wraps.length && wraps[wraps.length - 1] !== wrap) return;
+      e.preventDefault();
+      close();
+    };
+    document.addEventListener('keydown', onKey, true);
+    requestAnimationFrame(() => {
+      wrap.classList.add('show');
+      const focusTarget = wrap.querySelector('input:not([type="hidden"]), textarea, select')
+        || wrap.querySelector('.modal-x');
+      if (focusTarget) focusTarget.focus({ preventScroll: true });
+    });
     wrap.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
     return { close, rootEl: wrap };
   }

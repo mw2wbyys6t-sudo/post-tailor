@@ -15,8 +15,7 @@ window.CP = window.CP || {};
     const portrait = S().portrait;
 
     const published = history.filter(h => h.status === '已发布');
-    const totalViews = published.reduce((s, h) => s + h.views, 0);
-    const totalLikes = published.reduce((s, h) => s + h.likes, 0);
+    const totalViews = published.reduce((s, h) => s + (Number(h.views) || 0), 0);
 
     /* 内容表现趋势：合并所有已发布记录的回拉快照，按时间累计阅读 */
     const seriesAll = published.filter(h => Array.isArray(h.series) && h.series.length)
